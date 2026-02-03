@@ -26,11 +26,12 @@ class FeedbackController extends Controller
 
         switch ($sort) {
             case 'top':
-                $query->orderByDesc('votes_count');
+                $query->orderByDesc('votes_count')->orderByDesc('created_at');
                 break;
             case 'trending':
-                $query->orderByDesc('votes_count')
-                      ->where('created_at', '>=', now()->subDays(30));
+                $query->where('created_at', '>=', now()->subDays(30))
+                      ->orderByDesc('votes_count')
+                      ->orderByDesc('created_at');
                 break;
             default: // new
                 $query->orderByDesc('created_at');
@@ -64,9 +65,13 @@ class FeedbackController extends Controller
 
         $item = $request->user()->feedbackItems()->create($validated);
 
-        $adminEmail = config('quran.admin_email');
-        if ($adminEmail) {
-            Mail::to($adminEmail)->send(new NewFeedbackSubmitted($item));
+        try {
+            $adminEmail = config('quran.admin_email');
+            if ($adminEmail) {
+                Mail::to($adminEmail)->send(new NewFeedbackSubmitted($item));
+            }
+        } catch (\Throwable $e) {
+            // Don't block the user if mail fails
         }
 
         return redirect('/feedback')->with('success', 'Your request has been submitted!');

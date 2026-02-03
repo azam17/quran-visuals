@@ -44,6 +44,8 @@
         a:hover { text-decoration: underline; }
 
         .site-nav {
+            position: relative;
+            z-index: 1;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -78,6 +80,8 @@
         }
 
         .container {
+            position: relative;
+            z-index: 1;
             max-width: 960px;
             margin: 0 auto;
             padding: 32px 24px;

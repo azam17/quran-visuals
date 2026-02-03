@@ -204,9 +204,9 @@
     <h1>Feature Requests</h1>
     <div style="display: flex; align-items: center; gap: 12px;">
         <div class="sort-tabs">
-            <a href="/feedback?sort=new{{ $search ? '&search='.$search : '' }}" class="{{ $sort === 'new' ? 'active' : '' }}">New</a>
-            <a href="/feedback?sort=top{{ $search ? '&search='.$search : '' }}" class="{{ $sort === 'top' ? 'active' : '' }}">Top</a>
-            <a href="/feedback?sort=trending{{ $search ? '&search='.$search : '' }}" class="{{ $sort === 'trending' ? 'active' : '' }}">Trending</a>
+            <a href="/feedback?sort=new{{ $search ? '&search='.urlencode($search) : '' }}" class="{{ $sort === 'new' ? 'active' : '' }}">New</a>
+            <a href="/feedback?sort=top{{ $search ? '&search='.urlencode($search) : '' }}" class="{{ $sort === 'top' ? 'active' : '' }}">Top</a>
+            <a href="/feedback?sort=trending{{ $search ? '&search='.urlencode($search) : '' }}" class="{{ $sort === 'trending' ? 'active' : '' }}">Trending</a>
         </div>
         @auth
             <a href="/feedback/create" class="btn btn-primary">+ New Request</a>
@@ -285,7 +285,7 @@
 
 @if ($items->hasPages())
     <div class="pagination-wrapper">
-        {{ $items->links('pagination::simple-default') }}
+        {{ $items->links() }}
     </div>
 @endif
 @endsection

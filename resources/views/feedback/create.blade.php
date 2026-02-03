@@ -7,7 +7,7 @@
     <h1 style="font-family: 'Cinzel', serif; font-size: 1.5rem; margin-bottom: 24px;">Submit Feature Request</h1>
 
     <div class="card">
-        <form method="POST" action="/feedback">
+        <form method="POST" action="/feedback" id="feedback-form">
             @csrf
 
             <div class="form-group">
@@ -27,10 +27,17 @@
             </div>
 
             <div style="display: flex; gap: 12px; align-items: center;">
-                <button type="submit" class="btn btn-primary">Submit Request</button>
+                <button type="submit" class="btn btn-primary" id="submit-btn">Submit Request</button>
                 <a href="/feedback" style="color: var(--muted); font-size: 0.9rem;">Cancel</a>
             </div>
         </form>
+        <script>
+            document.getElementById('feedback-form').addEventListener('submit', function() {
+                var btn = document.getElementById('submit-btn');
+                btn.disabled = true;
+                btn.textContent = 'Submitting...';
+            });
+        </script>
     </div>
 </div>
 @endsection
