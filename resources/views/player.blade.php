@@ -274,6 +274,57 @@
             display: none;
         }
 
+        .cinema-playpause {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 100;
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            background: rgba(0, 0, 0, 0.5);
+            color: #fff;
+            font-size: 0;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.4s, transform 0.2s;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+
+        .cinema-playpause[hidden] {
+            display: none;
+        }
+
+        .cinema-playpause:not([hidden]) {
+            display: flex;
+        }
+
+        .cinema-playpause.visible {
+            opacity: 1;
+        }
+
+        .cinema-playpause:hover {
+            transform: translate(-50%, -50%) scale(1.1);
+            border-color: rgba(255, 255, 255, 0.5);
+            background: rgba(0, 0, 0, 0.65);
+        }
+
+        .cinema-playpause:active {
+            transform: translate(-50%, -50%) scale(0.95);
+        }
+
+        .cinema-playpause svg {
+            width: 28px;
+            height: 28px;
+            fill: #fff;
+        }
+
         .cinema-share-btn {
             position: absolute;
             top: 18px;
@@ -483,6 +534,10 @@
                 <div id="meta-warning"></div>
             </div>
             <button id="exit-cinema" class="cinema-exit-btn" hidden>Exit Cinema</button>
+            <button id="playpause-btn" class="cinema-playpause" hidden>
+                <svg id="play-icon" viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"/></svg>
+                <svg id="pause-icon" viewBox="0 0 24 24" style="display:none;"><rect x="5" y="3" width="4" height="18"/><rect x="15" y="3" width="4" height="18"/></svg>
+            </button>
             <button id="share-btn" class="cinema-share-btn" hidden>&#8599; Share<span class="share-feedback" id="share-feedback"></span></button>
             <button id="fullscreen-btn" class="cinema-fullscreen-btn" hidden>Go Fullscreen</button>
             <input type="color" id="stage-color-picker" class="stage-color-picker" value="{{ $presets[0]['vars']['--accent'] }}" aria-label="Accent color" title="Accent color">
@@ -516,6 +571,16 @@
         const stageColorPicker = document.getElementById('stage-color-picker');
         const shareBtn = document.getElementById('share-btn');
         const shareFeedback = document.getElementById('share-feedback');
+        const playpauseBtn = document.getElementById('playpause-btn');
+        const playIcon = document.getElementById('play-icon');
+        const pauseIcon = document.getElementById('pause-icon');
+        let isPlaying = false;
+
+        function syncPlayPauseIcon(playing) {
+            isPlaying = playing;
+            playIcon.style.display = playing ? 'none' : 'block';
+            pauseIcon.style.display = playing ? 'block' : 'none';
+        }
 
         let audioContext = null;
         let analyser = null;
@@ -586,6 +651,68 @@
         function rgba(hex, alpha) {
             const c = hexToRgb(hex);
             return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
+        }
+
+        function hexToHsl(hex) {
+            const c = hexToRgb(hex);
+            const r = c.r / 255, g = c.g / 255, b = c.b / 255;
+            const max = Math.max(r, g, b), min = Math.min(r, g, b);
+            let h, s, l = (max + min) / 2;
+            if (max === min) { h = s = 0; }
+            else {
+                const d = max - min;
+                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+                else if (max === g) h = ((b - r) / d + 2) / 6;
+                else h = ((r - g) / d + 4) / 6;
+            }
+            return { h: Math.round(h * 360), s, l };
+        }
+
+        function getLayersForHue(hue, color, darker) {
+            const base = { effect: 'gradientGlow', params: { color: color } };
+            if ((hue >= 0 && hue < 30) || hue >= 330) {
+                // Red/Pink — Energetic
+                return [
+                    base,
+                    { effect: 'pulseRing', params: { color: color } },
+                    { effect: 'waveLine', params: { color: darker, yPosition: 0.78 } },
+                    { effect: 'particles', params: { color: color, count: 60, shape: 'circle' } },
+                ];
+            } else if (hue >= 30 && hue < 70) {
+                // Orange/Gold — Classic
+                return [
+                    base,
+                    { effect: 'concentricArcs', params: { color: color, count: 5 } },
+                    { effect: 'particles', params: { color: darker, count: 50, shape: 'square' } },
+                    { effect: 'waveLine', params: { color: color, yPosition: 0.78 } },
+                ];
+            } else if (hue >= 70 && hue < 170) {
+                // Green — Organic
+                return [
+                    base,
+                    { effect: 'nebulaClouds', params: { color: color } },
+                    { effect: 'starField', params: { color: darker, count: 100 } },
+                    { effect: 'particles', params: { color: color, count: 40, shape: 'circle' } },
+                    { effect: 'waveLine', params: { color: darker, yPosition: 0.78 } },
+                ];
+            } else if (hue >= 170 && hue < 260) {
+                // Blue/Cyan — Structured
+                return [
+                    base,
+                    { effect: 'verticalBars', params: { color: color, count: 48 } },
+                    { effect: 'concentricArcs', params: { color: darker, count: 5 } },
+                    { effect: 'particles', params: { color: color, count: 50, shape: 'circle' } },
+                ];
+            } else {
+                // Purple (260-330) — Mystical
+                return [
+                    base,
+                    { effect: 'geometricMandala', params: { color: color, sides: 6 } },
+                    { effect: 'starField', params: { color: darker, count: 100 } },
+                    { effect: 'nebulaClouds', params: { color: color } },
+                ];
+            }
         }
 
         // ── Effect registry ───────────────────────────────────────────────
@@ -839,23 +966,9 @@
             document.documentElement.style.setProperty('--accent', hex);
             document.documentElement.style.setProperty('--accent-2', darker);
 
-            // Recolor all layer params in the current preset
             const preset = getCurrentPreset();
-            const origAccent = preset._originalLayers ? preset.vars['--accent'] : hex;
-            const origAccent2 = preset._originalLayers ? preset.vars['--accent-2'] : darker;
-
-            preset.layers.forEach((layer, i) => {
-                if (!layer.params || !layer.params.color) return;
-                const orig = preset._originalLayers[i].params.color;
-                if (orig === origAccent) {
-                    layer.params.color = hex;
-                } else if (orig === origAccent2) {
-                    layer.params.color = darker;
-                } else if (orig !== '#ffffff' && orig !== '#000000') {
-                    // Non-white/black accent-adjacent color — remap to custom color
-                    layer.params.color = hex;
-                }
-            });
+            const hsl = hexToHsl(hex);
+            preset.layers = getLayersForHue(hsl.h, hex, darker);
         }
 
         // averageVolume kept for backwards compat but unused in draw loop
@@ -943,8 +1056,10 @@
                     onStateChange: function(event) {
                         if (event.data === YT.PlayerState.PLAYING) {
                             ytPlaying = true;
+                            syncPlayPauseIcon(true);
                         } else {
                             ytPlaying = false;
+                            syncPlayPauseIcon(false);
                         }
                     },
                     onReady: function() {
@@ -983,11 +1098,13 @@
         function showOverlays() {
             meta.style.opacity = '1';
             shareBtn.classList.add('visible');
+            playpauseBtn.classList.add('visible');
         }
 
         function hideOverlays() {
             meta.style.opacity = '0';
             shareBtn.classList.remove('visible');
+            playpauseBtn.classList.remove('visible');
         }
 
         function startOverlayHideTimer() {
@@ -1000,6 +1117,7 @@
             const isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
             exitCinemaBtn.hidden = !isFullscreen;
             shareBtn.hidden = !(isFullscreen && mediaActive);
+            playpauseBtn.hidden = !(isFullscreen && mediaActive);
             fullscreenBtn.hidden = true;
             resizeCanvas();
 
@@ -1047,6 +1165,24 @@
             startOverlayHideTimer();
         });
 
+        playpauseBtn.addEventListener('click', () => {
+            if (ytMode && ytApiPlayer) {
+                if (ytPlaying) ytApiPlayer.pauseVideo();
+                else ytApiPlayer.playVideo();
+            } else if (!audioPlayer.hidden) {
+                if (audioPlayer.paused) audioPlayer.play().catch(() => {});
+                else audioPlayer.pause();
+            }
+            startOverlayHideTimer();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && (document.fullscreenElement || document.webkitFullscreenElement)) {
+                e.preventDefault();
+                playpauseBtn.click();
+            }
+        });
+
         // ── Messages & meta ───────────────────────────────────────────────
 
         function setMessage(text, isError = false) {
@@ -1079,8 +1215,18 @@
 
             setMessage('Checking recitation source...', false);
             meta.hidden = true;
-            ytPlayer.hidden = true;
+
+            // Stop any currently playing media
+            if (!audioPlayer.paused) audioPlayer.pause();
+            audioPlayer.removeAttribute('src');
             audioPlayer.hidden = true;
+            if (ytApiPlayer) {
+                try { ytApiPlayer.stopVideo(); } catch (e) {}
+            }
+            ytPlayer.removeAttribute('src');
+            ytPlayer.hidden = true;
+            syncPlayPauseIcon(false);
+
             lastReactive = false;
             ytMode = false;
             ytPlaying = false;
@@ -1154,6 +1300,9 @@
             colorPicker.value = event.target.value;
             applyCustomColor(event.target.value);
         });
+
+        audioPlayer.addEventListener('play', () => syncPlayPauseIcon(true));
+        audioPlayer.addEventListener('pause', () => syncPlayPauseIcon(false));
 
         window.addEventListener('resize', resizeCanvas);
         applyPreset(presetSelect.value);
