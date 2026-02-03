@@ -2118,7 +2118,7 @@
                 const data = await res.json();
 
                 let ayahs = data.ayahs || [];
-                const totalTimingDuration = data.totalTimingDuration || null;
+                let totalTimingDuration = data.totalTimingDuration || null;
 
                 // Filter to ayah range if specified (partial surah in video)
                 if (ayahStart && ayahEnd && ayahStart <= ayahEnd) {
@@ -2127,9 +2127,36 @@
                     ayahs = ayahs.filter(a => a.numberInSurah >= ayahStart);
                 }
 
+                // Smart Al-Fatihah prefix: Most Quran recitation videos begin
+                // with Al-Fatihah before the main surah. Prepend it so the
+                // subtitle timeline matches what the viewer actually hears.
+                if (surahNumber !== 1 && !ayahStart) {
+                    try {
+                        const fatihahRes = await fetch('/api/surah/1');
+                        if (fatihahRes.ok) {
+                            const fd = await fatihahRes.json();
+                            const fatihaAyahs = fd.ayahs || [];
+                            if (fatihaAyahs.length > 0) {
+                                ayahs = [...fatihaAyahs, ...ayahs];
+                                if (fd.totalTimingDuration && totalTimingDuration) {
+                                    totalTimingDuration += fd.totalTimingDuration;
+                                }
+                            }
+                        }
+                    } catch (e) {}
+                }
+
                 if (ayahs.length === 0) return;
 
-                subtitleData = buildTimedSegments(ayahs, videoDuration, totalTimingDuration);
+                // Use QUL reference duration as the effective subtitle timeline,
+                // not the full video duration. Videos often have intros, outros,
+                // and extra content — stretching subtitles across the full video
+                // makes each ayah far too long. Scale up 15% for reciter variance.
+                const effectiveDuration = totalTimingDuration
+                    ? totalTimingDuration * 1.15
+                    : videoDuration;
+
+                subtitleData = buildTimedSegments(ayahs, effectiveDuration, totalTimingDuration);
 
                 // Generate a sync key from the video URL for localStorage
                 currentSyncKey = 'qv_sync_' + input.value.trim().replace(/[^a-zA-Z0-9]/g, '_').slice(0, 80);
@@ -2141,8 +2168,8 @@
                     document.getElementById('sync-tap').classList.add('synced');
                     document.getElementById('sync-tap').textContent = 'Synced';
                 } else {
-                    // Smart auto-offset: if video is longer than QUL reference,
-                    // estimate intro time so text doesn't run ahead of reciter
+                    // Smart auto-offset: estimate intro time from the gap between
+                    // video duration and the QUL recitation reference duration
                     subtitleOffset = 0;
                     if (totalTimingDuration && videoDuration > totalTimingDuration * 1.03) {
                         const extraTime = videoDuration - totalTimingDuration;
