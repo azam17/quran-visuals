@@ -27,16 +27,7 @@ class PlayerController extends Controller
         $result = $inspector->inspect($data['url']);
 
         if ($result['ok'] ?? false) {
-            // Priority 1: Existing Whisper subtitle file (backward compat)
-            if (($result['type'] ?? '') === 'youtube') {
-                $videoId = $this->extractVideoId($data['url']);
-                if ($videoId && file_exists(storage_path("app/public/subtitles/{$videoId}.json"))) {
-                    $result['subtitle_slug'] = $videoId;
-                    return response()->json($result);
-                }
-            }
-
-            // Priority 2: Detect surah from video title via Quran API
+            // Detect surah from video title via Quran API
             $title = $result['title'] ?? '';
             if ($title !== '') {
                 $detected = $quranApi->detectSurahFromTitle($title);
