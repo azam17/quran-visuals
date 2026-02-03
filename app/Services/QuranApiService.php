@@ -9,6 +9,7 @@ use Illuminate\Support\Str;
 class QuranApiService
 {
     private const API_BASE = 'https://api.alquran.cloud/v1';
+    private const FALLBACK_API_BASE = 'https://api.quran.com/api/v4';
     private const CACHE_DAYS = 30;
 
     /**
@@ -41,6 +42,7 @@ class QuranApiService
             return $cached;
         }
 
+        // Try primary API (alquran.cloud)
         try {
             $response = Http::timeout(10)->get(self::API_BASE . '/surah');
 
@@ -52,7 +54,29 @@ class QuranApiService
                 }
             }
         } catch (\Throwable $e) {
-            // Network error — return empty without caching
+            // Primary API failed — try fallback
+        }
+
+        // Fallback: quran.com API
+        try {
+            $response = Http::timeout(10)->get(self::FALLBACK_API_BASE . '/chapters');
+
+            if ($response->ok()) {
+                $chapters = $response->json('chapters') ?? [];
+                if (!empty($chapters)) {
+                    $data = array_map(fn($ch) => [
+                        'number' => $ch['id'],
+                        'englishName' => $ch['name_simple'] ?? "Surah {$ch['id']}",
+                        'englishNameTranslation' => $ch['translated_name']['name'] ?? '',
+                        'name' => $ch['name_arabic'] ?? '',
+                        'numberOfAyahs' => $ch['verses_count'] ?? 0,
+                    ], $chapters);
+                    Cache::put('quran_surah_list', $data, now()->addDays(self::CACHE_DAYS));
+                    return $data;
+                }
+            }
+        } catch (\Throwable $e) {
+            // Both APIs failed
         }
 
         return [];
@@ -73,6 +97,7 @@ class QuranApiService
             return $cached;
         }
 
+        // Try primary API (alquran.cloud)
         try {
             $response = Http::timeout(10)->get(self::API_BASE . "/surah/{$surahNumber}/quran-uthmani");
 
@@ -84,10 +109,57 @@ class QuranApiService
                 }
             }
         } catch (\Throwable $e) {
-            // Network error — return null without caching
+            // Primary API failed — try fallback
+        }
+
+        // Fallback: quran.com API
+        try {
+            $response = Http::timeout(15)->get(self::FALLBACK_API_BASE . '/quran/verses/uthmani', [
+                'chapter_number' => $surahNumber,
+            ]);
+
+            if ($response->ok()) {
+                $verses = $response->json('verses') ?? [];
+                if (!empty($verses)) {
+                    // Get surah metadata from chapter list
+                    $surahMeta = $this->getSurahMeta($surahNumber);
+
+                    $data = [
+                        'number' => $surahNumber,
+                        'englishName' => $surahMeta['englishName'] ?? "Surah {$surahNumber}",
+                        'numberOfAyahs' => count($verses),
+                        'ayahs' => array_map(function ($verse) {
+                            // verse_key format: "1:1", "1:2", etc.
+                            $parts = explode(':', $verse['verse_key'] ?? '');
+                            return [
+                                'numberInSurah' => (int) ($parts[1] ?? 0),
+                                'text' => $verse['text_uthmani'] ?? '',
+                            ];
+                        }, $verses),
+                    ];
+                    Cache::put($cacheKey, $data, now()->addDays(self::CACHE_DAYS));
+                    return $data;
+                }
+            }
+        } catch (\Throwable $e) {
+            // Both APIs failed
         }
 
         return null;
+    }
+
+    /**
+     * Get metadata for a single surah from the cached list.
+     */
+    private function getSurahMeta(int $surahNumber): array
+    {
+        $surahs = $this->getSurahList();
+        foreach ($surahs as $surah) {
+            if (($surah['number'] ?? 0) === $surahNumber) {
+                return $surah;
+            }
+        }
+        return [];
     }
 
     /**
