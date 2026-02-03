@@ -876,12 +876,15 @@
             bottom: 2%;
             left: 50%;
             transform: translateX(-50%);
-            display: flex;
             align-items: center;
             gap: 8px;
             opacity: 0.4;
             transition: opacity 0.3s;
             z-index: 20;
+            display: none;
+        }
+        .sync-controls.visible {
+            display: flex;
         }
         .sync-controls:hover { opacity: 1; }
         .sync-btn {
@@ -976,7 +979,7 @@
             <canvas id="visuals"></canvas>
             <div id="surah-display"></div>
             <div id="subtitle-overlay"></div>
-            <div id="sync-controls" class="sync-controls" hidden>
+            <div id="sync-controls" class="sync-controls">
                 <button id="sync-slower" class="sync-btn" title="Delay text (reciter is ahead)">−5s</button>
                 <span id="sync-label" class="sync-label">Sync: 0s</span>
                 <button id="sync-faster" class="sync-btn" title="Advance text (reciter is behind)">+5s</button>
@@ -2118,7 +2121,7 @@
                 // Show sync controls so user can adjust timing offset
                 subtitleOffset = 0;
                 syncLabel.textContent = 'Sync: 0s';
-                syncControls.hidden = false;
+                syncControls.classList.add('visible');
             } catch (e) {
                 // API not available — silent fail
             }
@@ -2656,7 +2659,7 @@
             subtitleData = null;
             currentSegmentId = -1;
             subtitleOverlay.textContent = '';
-            syncControls.hidden = true;
+            syncControls.classList.remove('visible');
             subtitleOffset = 0;
             hideDetectionBar();
 
