@@ -443,11 +443,16 @@ class QuranApiService
     }
 
     /**
-     * Get reference timing proportions for a surah from QUL data.
+     * Get reference timing for a surah from QUL data.
      *
-     * Returns an array keyed by ayah number:
-     * [1 => ['proportion' => 0.032, 'wordProportions' => [0.25, 0.30, ...]], ...]
-     * or null if no timing data is available.
+     * Returns actual timestamps (in seconds) for scaling to any video duration:
+     * [
+     *   'totalDuration' => 46.36,
+     *   'ayahs' => [
+     *     1 => ['start' => 0.0, 'end' => 6.09, 'words' => [['start' => 0.0, 'end' => 0.58], ...]],
+     *     ...
+     *   ]
+     * ]
      */
     public function getReferenceTiming(int $surahNumber): ?array
     {
@@ -466,9 +471,8 @@ class QuranApiService
             return null;
         }
 
-        // Calculate total surah duration from segment data
-        $totalDuration = 0;
-        $ayahData = [];
+        $ayahs = [];
+        $maxEndMs = 0;
 
         foreach ($raw as $key => $segment) {
             // Key format: "1:1", "1:2", etc.
@@ -476,44 +480,77 @@ class QuranApiService
             $ayahNum = (int) ($parts[1] ?? 0);
             if ($ayahNum < 1) continue;
 
-            $duration = $segment['duration_sec'] ?? 0;
-            $totalDuration += $duration;
+            // Ayah start/end from timestamps
+            $startSec = $this->timestampToSeconds($segment['timestamp_from'] ?? '00:00:00.000');
+            $endSec = $this->timestampToSeconds($segment['timestamp_to'] ?? '00:00:00.000');
 
-            // Extract word proportions from segments
-            $wordProportions = [];
-            $segments = $segment['segments'] ?? [];
-            if (!empty($segments)) {
-                $segmentDurations = [];
-                foreach ($segments as $seg) {
-                    $segDuration = ($seg[2] ?? 0) - ($seg[1] ?? 0);
-                    $segmentDurations[] = max(0, $segDuration);
-                }
-                $segTotal = array_sum($segmentDurations);
-                if ($segTotal > 0) {
-                    $wordProportions = array_map(fn($d) => round($d / $segTotal, 4), $segmentDurations);
+            // Extract per-word absolute timestamps from segments
+            // Filter out incomplete segments (those without start/end ms)
+            // Deduplicate by word position (keep first occurrence with timestamps)
+            $wordTimings = [];
+            $seenWords = [];
+            foreach ($segment['segments'] ?? [] as $seg) {
+                if (count($seg) >= 3) {
+                    $wordPos = $seg[0];
+                    if (!isset($seenWords[$wordPos])) {
+                        $seenWords[$wordPos] = true;
+                        $wordTimings[] = [
+                            'start' => round($seg[1] / 1000, 4),
+                            'end' => round($seg[2] / 1000, 4),
+                        ];
+                    }
                 }
             }
 
-            $ayahData[$ayahNum] = [
-                'duration' => $duration,
-                'wordProportions' => $wordProportions,
+            $ayahs[$ayahNum] = [
+                'start' => round($startSec, 4),
+                'end' => round($endSec, 4),
+                'words' => $wordTimings,
             ];
+
+            // Track the absolute end of the surah
+            $endMs = 0;
+            foreach ($segment['segments'] ?? [] as $seg) {
+                if (count($seg) >= 3 && $seg[2] > $endMs) {
+                    $endMs = $seg[2];
+                }
+            }
+            if ($endMs > $maxEndMs) {
+                $maxEndMs = $endMs;
+            }
+        }
+
+        if (empty($ayahs)) {
+            return null;
+        }
+
+        // Total duration: use last segment's end time for accuracy
+        $totalDuration = round($maxEndMs / 1000, 4);
+        if ($totalDuration <= 0) {
+            // Fallback to last ayah's end time
+            $lastAyah = end($ayahs);
+            $totalDuration = $lastAyah['end'] ?? 0;
         }
 
         if ($totalDuration <= 0) {
             return null;
         }
 
-        // Convert durations to proportions
-        $result = [];
-        foreach ($ayahData as $ayahNum => $data) {
-            $result[$ayahNum] = [
-                'proportion' => round($data['duration'] / $totalDuration, 6),
-                'wordProportions' => $data['wordProportions'],
-            ];
-        }
+        return [
+            'totalDuration' => $totalDuration,
+            'ayahs' => $ayahs,
+        ];
+    }
 
-        return $result;
+    /**
+     * Parse a timestamp string "HH:MM:SS.mmm" to seconds.
+     */
+    private function timestampToSeconds(string $ts): float
+    {
+        if (preg_match('/(\d+):(\d+):(\d+)\.(\d+)/', $ts, $m)) {
+            return (int) $m[1] * 3600 + (int) $m[2] * 60 + (int) $m[3] + (int) $m[4] / 1000;
+        }
+        return 0.0;
     }
 
     /**

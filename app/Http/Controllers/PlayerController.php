@@ -71,19 +71,17 @@ class PlayerController extends Controller
 
         // Load QUL reference timing if available
         $timing = $quranApi->getReferenceTiming($number);
+        $timingAyahs = $timing['ayahs'] ?? [];
 
-        $ayahs = collect($surahData['ayahs'] ?? [])->map(function ($ayah) use ($timing) {
+        $ayahs = collect($surahData['ayahs'] ?? [])->map(function ($ayah) use ($timingAyahs) {
             $text = trim($ayah['text'] ?? '');
             // Strip BOM and zero-width characters
             $text = preg_replace('/[\x{FEFF}\x{200B}\x{200C}\x{200D}]/u', '', $text);
 
             $ayahNum = $ayah['numberInSurah'] ?? 0;
             $ayahTiming = null;
-            if ($timing && isset($timing[$ayahNum])) {
-                $ayahTiming = [
-                    'proportion' => $timing[$ayahNum]['proportion'],
-                    'wordProportions' => $timing[$ayahNum]['wordProportions'],
-                ];
+            if (isset($timingAyahs[$ayahNum])) {
+                $ayahTiming = $timingAyahs[$ayahNum];
             }
 
             return [
@@ -100,6 +98,7 @@ class PlayerController extends Controller
                 'englishName' => $surahData['englishName'] ?? "Surah {$number}",
                 'numberOfAyahs' => $surahData['numberOfAyahs'] ?? count($ayahs),
             ],
+            'totalTimingDuration' => $timing['totalDuration'] ?? null,
             'ayahs' => $ayahs,
         ]);
     }

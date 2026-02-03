@@ -2069,6 +2069,7 @@
                 const data = await res.json();
 
                 let ayahs = data.ayahs || [];
+                const totalTimingDuration = data.totalTimingDuration || null;
 
                 // Filter to ayah range if specified (partial surah in video)
                 if (ayahStart && ayahEnd && ayahStart <= ayahEnd) {
@@ -2079,7 +2080,7 @@
 
                 if (ayahs.length === 0) return;
 
-                subtitleData = buildTimedSegments(ayahs, videoDuration);
+                subtitleData = buildTimedSegments(ayahs, videoDuration, totalTimingDuration);
             } catch (e) {
                 // API not available — silent fail
             }
@@ -2089,90 +2090,83 @@
          * Build timed segments from ayahs, using QUL reference timing when
          * available, falling back to character-count proportional timing.
          */
-        function buildTimedSegments(ayahs, videoDuration) {
-            const hasQulTiming = ayahs.some(a => a.timing && a.timing.proportion);
+        function buildTimedSegments(ayahs, videoDuration, totalTimingDuration) {
+            const hasQulTiming = ayahs.some(a => a.timing && a.timing.start !== undefined);
 
-            if (hasQulTiming) {
-                return buildTimedSegmentsFromReference(ayahs, videoDuration);
+            if (hasQulTiming && totalTimingDuration > 0) {
+                return buildTimedSegmentsFromReference(ayahs, videoDuration, totalTimingDuration);
             }
             return buildTimedSegmentsFromCharCount(ayahs, videoDuration);
         }
 
         /**
-         * QUL reference timing: use real recitation proportions scaled to video duration.
+         * QUL reference timing: scale actual recitation timestamps to video duration.
+         * Uses real timestamps from a reference reciter (Mishary Rashid al-Afasy)
+         * and scales them proportionally to match the video length.
          */
-        function buildTimedSegmentsFromReference(ayahs, videoDuration) {
-            // Reserve ~5% for inter-ayah pauses
-            const pauseTotal = videoDuration * 0.05;
-            const pausePerAyah = ayahs.length > 1 ? pauseTotal / (ayahs.length - 1) : 0;
-            const recitationDuration = videoDuration - pauseTotal;
+        function buildTimedSegmentsFromReference(ayahs, videoDuration, totalTimingDuration) {
+            // For partial surah (ayah range), use range duration instead of full surah
+            const firstAyahStart = (ayahs[0].timing && ayahs[0].timing.start !== undefined)
+                ? ayahs[0].timing.start : 0;
+            const lastAyah = ayahs[ayahs.length - 1];
+            const lastAyahEnd = (lastAyah.timing && lastAyah.timing.end !== undefined)
+                ? lastAyah.timing.end : totalTimingDuration;
+            const rangeDuration = lastAyahEnd - firstAyahStart;
 
-            // Normalize proportions to sum to 1 for the subset of ayahs we have
-            const totalProportion = ayahs.reduce((sum, a) => {
-                return sum + (a.timing && a.timing.proportion ? a.timing.proportion : 0);
-            }, 0);
+            // Scale factor: video duration / QUL range duration
+            const scaleFactor = rangeDuration > 0 ? videoDuration / rangeDuration : 1;
 
             const segments = [];
-            let currentTime = 0;
 
             for (let i = 0; i < ayahs.length; i++) {
                 const ayah = ayahs[i];
-                const proportion = (ayah.timing && ayah.timing.proportion) ? ayah.timing.proportion : 0;
-                const ayahDuration = totalProportion > 0
-                    ? (proportion / totalProportion) * recitationDuration
-                    : recitationDuration / ayahs.length;
+                const t = ayah.timing;
+
+                // Scale QUL timestamps to video duration
+                const ayahStart = t ? (t.start - firstAyahStart) * scaleFactor : 0;
+                const ayahEnd = t ? (t.end - firstAyahStart) * scaleFactor : videoDuration;
 
                 const words = [];
-                const wordProportions = (ayah.timing && ayah.timing.wordProportions) ? ayah.timing.wordProportions : [];
-                const wordCount = ayah.words ? ayah.words.length : 1;
-
                 if (ayah.words && ayah.words.length > 0) {
-                    let wordTime = currentTime;
+                    const wordTimings = (t && t.words) ? t.words : [];
+
                     for (let w = 0; w < ayah.words.length; w++) {
-                        // Use QUL word proportions if available and matching count
-                        let wDuration;
-                        if (wordProportions.length === ayah.words.length && wordProportions[w]) {
-                            wDuration = wordProportions[w] * ayahDuration;
+                        let wStart, wEnd;
+                        if (w < wordTimings.length && wordTimings[w]) {
+                            // Use actual QUL word timestamps, scaled
+                            wStart = (wordTimings[w].start - firstAyahStart) * scaleFactor;
+                            wEnd = (wordTimings[w].end - firstAyahStart) * scaleFactor;
                         } else {
-                            wDuration = ayahDuration / wordCount;
+                            // Fallback: distribute evenly within ayah
+                            const ayahDuration = ayahEnd - ayahStart;
+                            wStart = ayahStart + (w / ayah.words.length) * ayahDuration;
+                            wEnd = ayahStart + ((w + 1) / ayah.words.length) * ayahDuration;
                         }
                         words.push({
                             text: ayah.words[w],
-                            start: wordTime,
-                            end: wordTime + wDuration,
+                            start: wStart,
+                            end: wEnd,
                         });
-                        wordTime += wDuration;
                     }
                 }
 
                 segments.push({
                     id: i,
                     text: ayah.text,
-                    start: currentTime,
-                    end: currentTime + ayahDuration,
+                    start: ayahStart,
+                    end: ayahEnd,
                     words: words,
                     ayahNumber: ayah.numberInSurah,
                 });
-
-                currentTime += ayahDuration;
-                // Add inter-ayah pause (except after last ayah)
-                if (i < ayahs.length - 1) {
-                    currentTime += pausePerAyah;
-                }
             }
 
             return { language: 'ar', segments: segments };
         }
 
         /**
-         * Fallback: character-count proportional timing with inter-ayah pauses.
+         * Fallback: character-count proportional timing when no QUL data available.
          */
         function buildTimedSegmentsFromCharCount(ayahs, videoDuration) {
-            // Reserve ~5% for inter-ayah pauses
-            const pauseTotal = videoDuration * 0.05;
-            const pausePerAyah = ayahs.length > 1 ? pauseTotal / (ayahs.length - 1) : 0;
-            const recitationDuration = videoDuration - pauseTotal;
-
             // Use character count (excluding spaces) as duration proxy
             const totalChars = ayahs.reduce((sum, a) => {
                 return sum + (a.text ? a.text.replace(/\s/g, '').length : 1);
@@ -2185,10 +2179,9 @@
             for (let i = 0; i < ayahs.length; i++) {
                 const ayah = ayahs[i];
                 const charCount = ayah.text ? ayah.text.replace(/\s/g, '').length : 1;
-                const ayahDuration = (charCount / totalChars) * recitationDuration;
+                const ayahDuration = (charCount / totalChars) * videoDuration;
 
                 const words = [];
-                const wordCount = ayah.words ? ayah.words.length : 1;
 
                 if (ayah.words && ayah.words.length > 0) {
                     // Distribute within ayah by per-word character count
@@ -2217,10 +2210,6 @@
                 });
 
                 currentTime += ayahDuration;
-                // Add inter-ayah pause (except after last ayah)
-                if (i < ayahs.length - 1) {
-                    currentTime += pausePerAyah;
-                }
             }
 
             return { language: 'ar', segments: segments };
