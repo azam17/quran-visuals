@@ -90,8 +90,8 @@
 
         .controls {
             display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
+            flex-wrap: nowrap;
+            gap: 10px;
             align-items: center;
             justify-content: flex-end;
             font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
@@ -109,7 +109,8 @@
         }
 
         .controls input[type="url"] {
-            min-width: min(48vw, 520px);
+            flex: 1;
+            min-width: 200px;
         }
 
         .controls input[type="color"] {
@@ -523,6 +524,12 @@
         }
 
         /* ── Control icon buttons (repeat, screenshot, share, shortcuts) ── */
+        .ctrl-group {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
         .ctrl-btn {
             display: inline-flex;
             align-items: center;
@@ -690,6 +697,7 @@
             display: grid;
             place-items: center;
             padding: 24px;
+            background: rgb(5, 5, 7);
         }
 
         .reciters-panel[hidden] {
@@ -835,26 +843,28 @@
                 <input type="color" id="color-picker" value="{{ $presets[0]['vars']['--accent'] }}" aria-label="Accent color" title="Accent color">
                 <button type="submit">Enter Cinema</button>
 
-                {{-- Repeat/Loop --}}
-                <button type="button" class="ctrl-btn" id="repeat-btn" title="Repeat: Off">
-                    <svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
-                    <span class="badge" id="repeat-badge" style="display:none;">1</span>
-                </button>
+                <div class="ctrl-group">
+                    {{-- Repeat/Loop --}}
+                    <button type="button" class="ctrl-btn" id="repeat-btn" title="Repeat: Off">
+                        <svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+                        <span class="badge" id="repeat-badge" style="display:none;">1</span>
+                    </button>
 
-                {{-- Screenshot --}}
-                <button type="button" class="ctrl-btn" id="screenshot-btn" title="Capture Screenshot">
-                    <svg viewBox="0 0 24 24"><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.65 0-3 1.35-3 3s1.35 3 3 3 3-1.35 3-3-1.35-3-3-3z"/></svg>
-                </button>
+                    {{-- Screenshot --}}
+                    <button type="button" class="ctrl-btn" id="screenshot-btn" title="Capture Screenshot">
+                        <svg viewBox="0 0 24 24"><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.65 0-3 1.35-3 3s1.35 3 3 3 3-1.35 3-3-1.35-3-3-3z"/></svg>
+                    </button>
 
-                {{-- Share --}}
-                <button type="button" class="ctrl-btn" id="share-link-btn" title="Share Link">
-                    <svg viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/></svg>
-                </button>
+                    {{-- Share --}}
+                    <button type="button" class="ctrl-btn" id="share-link-btn" title="Share Link">
+                        <svg viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/></svg>
+                    </button>
 
-                {{-- Keyboard Shortcuts --}}
-                <button type="button" class="ctrl-btn" id="shortcuts-btn" title="Keyboard Shortcuts (?)">
-                    <svg viewBox="0 0 24 24"><path d="M20 5H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/></svg>
-                </button>
+                    {{-- Keyboard Shortcuts --}}
+                    <button type="button" class="ctrl-btn" id="shortcuts-btn" title="Keyboard Shortcuts (?)">
+                        <svg viewBox="0 0 24 24"><path d="M20 5H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/></svg>
+                    </button>
+                </div>
             </form>
         </header>
 
