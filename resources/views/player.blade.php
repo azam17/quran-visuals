@@ -99,8 +99,17 @@
             font-size: 0.9rem;
         }
 
-        .controls input {
+        .controls input[type="url"] {
             min-width: min(48vw, 520px);
+        }
+
+        .controls input[type="color"] {
+            width: 38px;
+            height: 38px;
+            min-width: unset;
+            padding: 3px;
+            cursor: pointer;
+            border-radius: 50%;
         }
 
         .controls button {
@@ -339,7 +348,30 @@
             display: block;
         }
 
-        .stage:hover .stage-preset-select {
+        .stage-color-picker {
+            position: absolute;
+            bottom: 18px;
+            right: 170px;
+            z-index: 100;
+            width: 34px;
+            height: 34px;
+            padding: 2px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            background: rgba(0, 0, 0, 0.6);
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.3s;
+            display: none;
+        }
+
+        .stage:fullscreen .stage-color-picker,
+        .stage:-webkit-full-screen .stage-color-picker {
+            display: block;
+        }
+
+        .stage:hover .stage-preset-select,
+        .stage:hover .stage-color-picker {
             opacity: 1;
         }
 
@@ -431,6 +463,7 @@
                         <option value="{{ $preset['id'] }}">{{ $preset['name'] }}</option>
                     @endforeach
                 </select>
+                <input type="color" id="color-picker" value="{{ $presets[0]['vars']['--accent'] }}" aria-label="Accent color" title="Accent color">
                 <button type="submit">Enter Cinema</button>
             </form>
         </header>
@@ -452,6 +485,7 @@
             <button id="exit-cinema" class="cinema-exit-btn" hidden>Exit Cinema</button>
             <button id="share-btn" class="cinema-share-btn" hidden>&#8599; Share<span class="share-feedback" id="share-feedback"></span></button>
             <button id="fullscreen-btn" class="cinema-fullscreen-btn" hidden>Go Fullscreen</button>
+            <input type="color" id="stage-color-picker" class="stage-color-picker" value="{{ $presets[0]['vars']['--accent'] }}" aria-label="Accent color" title="Accent color">
             <select id="stage-preset-select" class="stage-preset-select" aria-label="Change visual preset">
                 @foreach ($presets as $preset)
                     <option value="{{ $preset['id'] }}">{{ $preset['name'] }}</option>
@@ -478,6 +512,8 @@
         const exitCinemaBtn = document.getElementById('exit-cinema');
         const fullscreenBtn = document.getElementById('fullscreen-btn');
         const stagePresetSelect = document.getElementById('stage-preset-select');
+        const colorPicker = document.getElementById('color-picker');
+        const stageColorPicker = document.getElementById('stage-color-picker');
         const shareBtn = document.getElementById('share-btn');
         const shareFeedback = document.getElementById('share-feedback');
 
@@ -709,6 +745,50 @@
             const preset = presets.find((item) => item.id === presetId) || presets[0];
             Object.entries(preset.vars).forEach(([key, value]) => {
                 document.documentElement.style.setProperty(key, value);
+            });
+            // Reset color pickers to this preset's accent
+            colorPicker.value = preset.vars['--accent'];
+            stageColorPicker.value = preset.vars['--accent'];
+            // Reset layer colors to originals
+            if (preset._originalLayers) {
+                preset.layers = JSON.parse(JSON.stringify(preset._originalLayers));
+            }
+        }
+
+        // Store original layer colors for each preset so we can remap them
+        presets.forEach(p => {
+            p._originalLayers = JSON.parse(JSON.stringify(p.layers));
+        });
+
+        function darkenHex(hex, factor) {
+            const c = hexToRgb(hex);
+            const r = Math.round(c.r * factor);
+            const g = Math.round(c.g * factor);
+            const b = Math.round(c.b * factor);
+            return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+        }
+
+        function applyCustomColor(hex) {
+            const darker = darkenHex(hex, 0.55);
+            document.documentElement.style.setProperty('--accent', hex);
+            document.documentElement.style.setProperty('--accent-2', darker);
+
+            // Recolor all layer params in the current preset
+            const preset = getCurrentPreset();
+            const origAccent = preset._originalLayers ? preset.vars['--accent'] : hex;
+            const origAccent2 = preset._originalLayers ? preset.vars['--accent-2'] : darker;
+
+            preset.layers.forEach((layer, i) => {
+                if (!layer.params || !layer.params.color) return;
+                const orig = preset._originalLayers[i].params.color;
+                if (orig === origAccent) {
+                    layer.params.color = hex;
+                } else if (orig === origAccent2) {
+                    layer.params.color = darker;
+                } else if (orig !== '#ffffff' && orig !== '#000000') {
+                    // Non-white/black accent-adjacent color — remap to custom color
+                    layer.params.color = hex;
+                }
             });
         }
 
@@ -1003,6 +1083,16 @@
         stagePresetSelect.addEventListener('change', (event) => {
             applyPreset(event.target.value);
             presetSelect.value = event.target.value;
+        });
+
+        colorPicker.addEventListener('input', (event) => {
+            stageColorPicker.value = event.target.value;
+            applyCustomColor(event.target.value);
+        });
+
+        stageColorPicker.addEventListener('input', (event) => {
+            colorPicker.value = event.target.value;
+            applyCustomColor(event.target.value);
         });
 
         window.addEventListener('resize', resizeCanvas);
