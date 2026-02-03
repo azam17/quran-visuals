@@ -721,10 +721,10 @@
 
             gradientGlow(ctx, w, h, a, flowOffset, params) {
                 const color = params.color || '#ffffff';
-                const intensity = 0.06 + a.bass * 0.35 + a.peak * 0.15;
+                const intensity = 0.02 + a.bass * 0.2 + a.peak * 0.08;
                 const gradient = ctx.createLinearGradient(0, 0, w, h);
                 gradient.addColorStop(0, rgba(color, intensity));
-                gradient.addColorStop(0.5, rgba(color, intensity * 0.3));
+                gradient.addColorStop(0.5, rgba(color, intensity * 0.2));
                 gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
                 ctx.fillStyle = gradient;
                 ctx.fillRect(0, 0, w, h);
@@ -755,16 +755,18 @@
             particles(ctx, w, h, a, flowOffset, params) {
                 const color = params.color || '#ffffff';
                 const baseCount = params.count || 60;
-                const count = Math.floor(baseCount + a.peak * 40);
+                const count = Math.floor(baseCount + a.peak * 20);
                 const shape = params.shape || 'square';
                 ctx.save();
                 ctx.globalCompositeOperation = 'lighter';
-                const speed = 1 + a.energy * 3;
+                const speed = 0.6 + a.energy * 2;
                 for (let i = 0; i < count; i++) {
-                    const x = (Math.sin(flowOffset * speed + i) * (0.3 + a.high * 0.2) + 0.5) * w;
-                    const y = (Math.cos(flowOffset * speed * 0.7 + i) * (0.3 + a.bass * 0.2) + 0.5) * h;
-                    const size = 2 + a.mid * 12 + a.peak * 8;
-                    ctx.fillStyle = rgba(color, 0.06 + a.volume * 0.4);
+                    const x = (Math.sin(flowOffset * speed + i * 1.1) * (0.35 + a.high * 0.15) + 0.5) * w;
+                    const y = (Math.cos(flowOffset * speed * 0.6 + i * 0.9) * (0.35 + a.bass * 0.15) + 0.5) * h;
+                    const size = 1 + a.mid * 3 + a.peak * 2;
+                    const alpha = a.volume * 0.35 + a.peak * 0.15;
+                    if (alpha < 0.01) continue;
+                    ctx.fillStyle = rgba(color, alpha);
                     if (shape === 'circle') {
                         ctx.beginPath();
                         ctx.arc(x, y, size / 2, 0, Math.PI * 2);
@@ -779,18 +781,20 @@
             waveLine(ctx, w, h, a, flowOffset, params) {
                 const color = params.color || '#ffffff';
                 const yPos = params.yPosition || 0.78;
-                const amplitude = 8 + a.bass * 60 + a.mid * 30;
+                const amplitude = a.bass * 50 + a.mid * 25 + a.peak * 10;
+                if (amplitude < 1) return;
                 const freq = 0.015 + a.high * 0.01;
+                const alpha = a.volume * 0.55 + a.peak * 0.15;
+                if (alpha < 0.01) return;
                 ctx.save();
-                ctx.globalAlpha = 0.3 + a.volume * 0.5;
-                ctx.shadowBlur = 6 + a.bass * 25;
+                ctx.shadowBlur = a.bass * 20;
                 ctx.shadowColor = color;
-                ctx.strokeStyle = rgba(color, 0.15 + a.volume * 0.6);
-                ctx.lineWidth = 1.5 + a.bass * 4;
+                ctx.strokeStyle = rgba(color, alpha);
+                ctx.lineWidth = 0.8 + a.bass * 2;
                 ctx.beginPath();
                 for (let x = 0; x < w; x += 8) {
                     const wave = Math.sin(flowOffset * 2.5 + x * freq) * amplitude
-                        + Math.sin(flowOffset * 1.2 + x * freq * 2.3) * (a.high * 15);
+                        + Math.sin(flowOffset * 1.2 + x * freq * 2.3) * (a.high * 12);
                     ctx.lineTo(x, h * yPos + wave);
                 }
                 ctx.stroke();
@@ -926,55 +930,62 @@
                 const activity = a.volume + a.peak * 0.5;
                 if (activity < 0.01) return;
                 ctx.save();
-                ctx.shadowBlur = a.bass * 20;
-                ctx.shadowColor = color;
+                ctx.globalCompositeOperation = 'lighter';
                 for (let layer = 0; layer < layerCount; layer++) {
                     const band = layer === 0 ? a.bass : layer === 1 ? a.mid : a.high;
-                    const amplitude = band * 90 + a.peak * 35 - layer * 8;
-                    if (amplitude < 1) continue;
-                    const freq = 0.008 + layer * 0.004 + a.high * 0.003;
-                    const speed = 1.5 + layer * 0.6;
-                    const alpha = band * 0.4 + a.peak * 0.1 - layer * 0.02;
+                    const amplitude = band * 55 + a.peak * 20 - layer * 6;
+                    if (amplitude < 0.5) continue;
+                    const freq = 0.006 + layer * 0.003 + a.high * 0.002;
+                    const speed = 1.2 + layer * 0.5;
+                    const alpha = band * 0.28 + a.peak * 0.08 - layer * 0.03;
                     if (alpha < 0.01) continue;
-                    const points = [];
-                    for (let x = 0; x <= w; x += 6) {
+                    // Thin glow behind the stroke
+                    ctx.shadowBlur = 8 + band * 15;
+                    ctx.shadowColor = rgba(color, alpha * 0.5);
+                    ctx.strokeStyle = rgba(color, alpha);
+                    ctx.lineWidth = 0.6 + band * 1.2;
+                    // Top wave
+                    ctx.beginPath();
+                    for (let x = 0; x <= w; x += 4) {
                         const wave = Math.sin(flowOffset * speed + x * freq) * amplitude
-                            + Math.sin(flowOffset * speed * 0.6 + x * freq * 2.1) * (a.high * 12);
-                        points.push({ x, y: wave });
-                    }
-                    ctx.beginPath();
-                    for (let i = 0; i < points.length; i++) {
-                        const px = points[i].x;
-                        const py = yCenter - points[i].y;
-                        if (i === 0) ctx.moveTo(px, py);
-                        else ctx.lineTo(px, py);
-                    }
-                    for (let i = points.length - 1; i >= 0; i--) {
-                        ctx.lineTo(points[i].x, yCenter + points[i].y);
-                    }
-                    ctx.closePath();
-                    const grad = ctx.createLinearGradient(0, yCenter - amplitude, 0, yCenter + amplitude);
-                    grad.addColorStop(0, `rgba(${c.r}, ${c.g}, ${c.b}, 0)`);
-                    grad.addColorStop(0.4, `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha * 0.4})`);
-                    grad.addColorStop(0.5, `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`);
-                    grad.addColorStop(0.6, `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha * 0.4})`);
-                    grad.addColorStop(1, `rgba(${c.r}, ${c.g}, ${c.b}, 0)`);
-                    ctx.fillStyle = grad;
-                    ctx.fill();
-                    ctx.beginPath();
-                    for (let i = 0; i < points.length; i++) {
-                        if (i === 0) ctx.moveTo(points[i].x, yCenter - points[i].y);
-                        else ctx.lineTo(points[i].x, yCenter - points[i].y);
-                    }
-                    ctx.strokeStyle = rgba(color, alpha * 0.6);
-                    ctx.lineWidth = 0.8 + a.bass * 2;
-                    ctx.stroke();
-                    ctx.beginPath();
-                    for (let i = 0; i < points.length; i++) {
-                        if (i === 0) ctx.moveTo(points[i].x, yCenter + points[i].y);
-                        else ctx.lineTo(points[i].x, yCenter + points[i].y);
+                            + Math.sin(flowOffset * speed * 0.5 + x * freq * 2.3) * (a.high * 8);
+                        const py = yCenter - wave;
+                        if (x === 0) ctx.moveTo(x, py);
+                        else ctx.lineTo(x, py);
                     }
                     ctx.stroke();
+                    // Mirrored bottom wave
+                    ctx.beginPath();
+                    for (let x = 0; x <= w; x += 4) {
+                        const wave = Math.sin(flowOffset * speed + x * freq) * amplitude
+                            + Math.sin(flowOffset * speed * 0.5 + x * freq * 2.3) * (a.high * 8);
+                        const py = yCenter + wave;
+                        if (x === 0) ctx.moveTo(x, py);
+                        else ctx.lineTo(x, py);
+                    }
+                    ctx.stroke();
+                    // Very subtle fill between the two lines
+                    if (alpha > 0.05) {
+                        ctx.shadowBlur = 0;
+                        const fillAlpha = alpha * 0.06;
+                        ctx.fillStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${fillAlpha})`;
+                        ctx.beginPath();
+                        const pts = [];
+                        for (let x = 0; x <= w; x += 4) {
+                            const wave = Math.sin(flowOffset * speed + x * freq) * amplitude
+                                + Math.sin(flowOffset * speed * 0.5 + x * freq * 2.3) * (a.high * 8);
+                            pts.push({ x, y: wave });
+                        }
+                        for (let i = 0; i < pts.length; i++) {
+                            if (i === 0) ctx.moveTo(pts[i].x, yCenter - pts[i].y);
+                            else ctx.lineTo(pts[i].x, yCenter - pts[i].y);
+                        }
+                        for (let i = pts.length - 1; i >= 0; i--) {
+                            ctx.lineTo(pts[i].x, yCenter + pts[i].y);
+                        }
+                        ctx.closePath();
+                        ctx.fill();
+                    }
                 }
                 ctx.shadowBlur = 0;
                 ctx.restore();
@@ -996,7 +1007,7 @@
                     const rBase = baseRadius + ring * 35 + a.bass * 60;
                     const waveAmp = a.mid * 55 + a.peak * 25 - ring * 5;
                     const detail = a.high * 15;
-                    const alpha = a.volume * 0.5 + a.peak * 0.15 - ring * 0.03;
+                    const alpha = a.volume * 0.3 + a.peak * 0.1 - ring * 0.03;
                     if (alpha < 0.01) continue;
                     ctx.beginPath();
                     for (let i = 0; i <= segments; i++) {
@@ -1011,7 +1022,7 @@
                     }
                     ctx.closePath();
                     ctx.strokeStyle = rgba(color, Math.min(1, alpha));
-                    ctx.lineWidth = 0.8 + a.bass * 3 - ring * 0.3;
+                    ctx.lineWidth = 0.6 + a.bass * 1.5 - ring * 0.2;
                     ctx.stroke();
                 }
                 ctx.shadowBlur = 0;
@@ -1021,8 +1032,10 @@
             mirroredBars(ctx, w, h, a, flowOffset, params) {
                 const color = params.color || '#ffffff';
                 const count = params.count || 64;
-                const gap = 2;
-                const barWidth = Math.max(1, (w / count) - gap);
+                const totalWidth = w * 0.85;
+                const offsetX = (w - totalWidth) / 2;
+                const step = totalWidth / count;
+                const barWidth = Math.max(1, step * 0.5);
                 const centerY = h / 2;
                 const activity = a.volume + a.peak * 0.5;
                 if (activity < 0.01) return;
@@ -1034,11 +1047,11 @@
                     if (ratio < 0.33) barAudio = a.bass;
                     else if (ratio < 0.66) barAudio = a.mid;
                     else barAudio = a.high;
-                    const jitter = Math.sin(flowOffset * 3 + i * 0.5) * barAudio * 0.1;
-                    const barHeight = (barAudio * 0.65 + jitter + a.peak * 0.2) * h * 0.38;
+                    const jitter = Math.sin(flowOffset * 3 + i * 0.5) * barAudio * 0.08;
+                    const barHeight = (barAudio * 0.5 + jitter + a.peak * 0.15) * h * 0.3;
                     if (barHeight < 1) continue;
-                    const x = i * (barWidth + gap);
-                    const alpha = barAudio * 0.5 + a.peak * 0.1;
+                    const x = offsetX + i * step;
+                    const alpha = barAudio * 0.3 + a.peak * 0.08;
                     if (alpha < 0.01) continue;
                     ctx.fillStyle = rgba(color, alpha);
                     ctx.fillRect(x, centerY - barHeight, barWidth, barHeight);
@@ -1061,7 +1074,7 @@
                 const scale = size * (0.3 + a.bass * 1.8);
                 const phase = flowOffset * (0.5 + a.mid * 1.5);
                 const harmonic = a.high * 0.3;
-                const alpha = a.volume * 0.5 + a.peak * 0.2;
+                const alpha = a.volume * 0.3 + a.peak * 0.12;
                 if (alpha < 0.01) { ctx.restore(); return; }
                 const points = 360;
                 ctx.beginPath();
@@ -1074,7 +1087,7 @@
                 }
                 ctx.closePath();
                 ctx.strokeStyle = rgba(color, alpha);
-                ctx.lineWidth = 0.8 + a.bass * 3;
+                ctx.lineWidth = 0.6 + a.bass * 1.5;
                 ctx.stroke();
                 ctx.shadowBlur = 0;
                 ctx.restore();
