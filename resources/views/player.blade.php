@@ -859,13 +859,6 @@
         #subtitle-overlay .word {
             display: inline-block;
             padding: 0 3px;
-            transition: color 0.15s, text-shadow 0.15s;
-        }
-
-        #subtitle-overlay .word.active {
-            color: var(--accent);
-            text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 60%, transparent),
-                         0 2px 12px rgba(0, 0, 0, 0.8);
         }
 
         #subtitle-overlay .ayah-badge {
@@ -2276,17 +2269,8 @@
                 renderSegment(seg);
             }
 
-            // Highlight active word
-            const words = subtitleOverlay.querySelectorAll('.word');
-            words.forEach(el => {
-                const ws = parseFloat(el.dataset.start);
-                const we = parseFloat(el.dataset.end);
-                if (currentTime >= ws && currentTime <= we) {
-                    el.classList.add('active');
-                } else {
-                    el.classList.remove('active');
-                }
-            });
+            // Word timing data is still stored on elements for potential future use,
+            // but no visual highlight is applied per user preference.
         }
 
         function getPlaybackTime() {
