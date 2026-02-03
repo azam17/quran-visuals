@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', [PlayerController::class, 'index']);
 Route::post('/api/validate', [PlayerController::class, 'validateUrl']);
+Route::get('/api/surah/{number}', [PlayerController::class, 'surahData'])->where('number', '[0-9]+');
 
 // Guest-only auth routes
 Route::middleware('guest')->group(function () {
