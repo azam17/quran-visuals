@@ -38,11 +38,11 @@
             position: fixed;
             inset: 0;
             background-image:
-                radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.04) 0, transparent 35%),
-                radial-gradient(circle at 70% 30%, rgba(255, 255, 255, 0.03) 0, transparent 40%),
-                radial-gradient(circle at 40% 80%, rgba(255, 255, 255, 0.02) 0, transparent 45%);
+                radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.02) 0, transparent 35%),
+                radial-gradient(circle at 70% 30%, rgba(255, 255, 255, 0.015) 0, transparent 40%);
             pointer-events: none;
             mix-blend-mode: screen;
+            z-index: -1;
         }
 
         .app {
@@ -114,7 +114,7 @@
 
         .controls button {
             border-color: var(--accent);
-            background: linear-gradient(120deg, rgba(194, 139, 59, 0.18), rgba(194, 139, 59, 0.35));
+            background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 18%, transparent), color-mix(in srgb, var(--accent) 35%, transparent));
             cursor: pointer;
             font-weight: 600;
             letter-spacing: 0.04em;
@@ -124,7 +124,7 @@
             position: relative;
             border-radius: 24px;
             overflow: hidden;
-            background: rgba(5, 5, 7, 0.6);
+            background: rgb(5, 5, 7);
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
         }
 
@@ -261,7 +261,7 @@
             padding: 14px 28px;
             border-radius: 12px;
             border: 1px solid var(--accent);
-            background: linear-gradient(120deg, rgba(194, 139, 59, 0.25), rgba(194, 139, 59, 0.5));
+            background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 25%, transparent), color-mix(in srgb, var(--accent) 50%, transparent));
             color: #fff;
             font-family: "Cinzel", serif;
             font-size: 1.1rem;
@@ -362,7 +362,7 @@
             left: 0;
             padding: 6px 12px;
             border-radius: 6px;
-            background: rgba(194, 139, 59, 0.9);
+            background: color-mix(in srgb, var(--accent) 90%, transparent);
             color: #fff;
             font-size: 0.78rem;
             white-space: nowrap;
@@ -1167,10 +1167,15 @@
             const width = canvas.clientWidth;
             const height = canvas.clientHeight;
 
-            // Faster fade when loud = crisper visuals, slower fade when quiet = trails
-            const fade = 0.12 + audio.volume * 0.08;
-            ctx.fillStyle = `rgba(0, 0, 0, ${fade})`;
-            ctx.fillRect(0, 0, width, height);
+            // Clear canvas — fast clear when quiet (clean bg), slower fade when loud (trails)
+            const activity = audio.volume + audio.peak;
+            if (activity < 0.02) {
+                ctx.clearRect(0, 0, width, height);
+            } else {
+                const fade = 0.15 + audio.volume * 0.1;
+                ctx.fillStyle = `rgba(0, 0, 0, ${fade})`;
+                ctx.fillRect(0, 0, width, height);
+            }
 
             // Analyse audio
             if (analyser) {
