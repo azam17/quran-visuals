@@ -90,7 +90,8 @@ class QuranApiService
         }
 
         // Step 1: Try numeric patterns — "surah 67", "067", "surah_067"
-        if (preg_match('/(?:surah|sura|surat)\s*[#_\-]?\s*(\d{1,3})\b/i', $normalized, $m)) {
+        // Negative lookahead: reject "surah 105-114" multi-surah ranges
+        if (preg_match('/(?:surah|sura|surat)\s*[#_\-]?\s*(\d{1,3})\b(?!\s*-\s*\d)/i', $normalized, $m)) {
             $num = (int) $m[1];
             if ($num >= 1 && $num <= 114) {
                 $result = $this->buildResult($num);
@@ -445,8 +446,10 @@ class QuranApiService
             $title
         );
 
-        // Replace common separators with space
+        // Replace common separators with space, but preserve hyphens between digits (e.g., "105-114", "1-83")
+        $title = preg_replace('/(\d)\-(\d)/', '$1{{HYPHEN}}$2', $title);
         $title = preg_replace('/[_\-\|·•]+/', ' ', $title);
+        $title = str_replace('{{HYPHEN}}', '-', $title);
 
         // Collapse whitespace
         $title = preg_replace('/\s+/', ' ', trim($title));

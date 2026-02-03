@@ -445,16 +445,16 @@ Artisan::command('quran:cache-surahs {--all : Cache all 114 surahs}', function (
 })->purpose('Pre-cache Quran surah data from api.alquran.cloud');
 
 // ── quran:download-timing ─────────────────────────────────────────────
-Artisan::command('quran:download-timing {--reciter=118 : QUL reciter ID (default: 118 = Mishary Rashid al-Afasy)}', function () {
+Artisan::command('quran:download-timing {--reciter=7 : QDC reciter ID (default: 7 = Mishary Rashid al-Afasy)}', function () {
     $reciterId = (int) $this->option('reciter');
-    $baseUrl = 'https://qul.tarteel.ai/api/audio-segments';
+    $baseUrl = 'https://api.qurancdn.com/api/qdc/audio/reciters/' . $reciterId . '/audio_files';
 
     $timingDir = storage_path('app/quran-timing');
     if (!is_dir($timingDir)) {
         mkdir($timingDir, 0755, true);
     }
 
-    $this->info("Downloading QUL timing data for reciter ID {$reciterId}...");
+    $this->info("Downloading QDC timing data for reciter ID {$reciterId}...");
     $bar = $this->output->createProgressBar(114);
     $bar->start();
 
@@ -464,25 +464,45 @@ Artisan::command('quran:download-timing {--reciter=118 : QUL reciter ID (default
     for ($surah = 1; $surah <= 114; $surah++) {
         try {
             $response = Http::timeout(15)->get($baseUrl, [
-                'reciter_id' => $reciterId,
-                'surah_number' => $surah,
+                'chapter' => $surah,
+                'segments' => 'true',
             ]);
 
             if ($response->ok()) {
-                $data = $response->json();
-                if ($data && is_array($data)) {
-                    // Save per-surah file
-                    file_put_contents(
-                        "{$timingDir}/surah-{$surah}.json",
-                        json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
-                    );
+                $audioFiles = $response->json('audio_files') ?? [];
 
-                    // Merge into combined file
-                    foreach ($data as $key => $segment) {
-                        $allData[$key] = $segment;
+                if (!empty($audioFiles)) {
+                    $verseTimings = $audioFiles[0]['verse_timings'] ?? [];
+
+                    if (!empty($verseTimings)) {
+                        // Convert to our keyed format: { "1:1": { duration_sec, segments, ... } }
+                        $surahData = [];
+                        foreach ($verseTimings as $vt) {
+                            $key = $vt['verse_key'] ?? '';
+                            if (!$key) continue;
+
+                            $durationMs = $vt['duration'] ?? (($vt['timestamp_to'] ?? 0) - ($vt['timestamp_from'] ?? 0));
+                            $surahData[$key] = [
+                                'duration_sec' => round($durationMs / 1000, 3),
+                                'timestamp_from' => sprintf('%02d:%02d:%02d.%03d', ($vt['timestamp_from'] ?? 0) / 3600000, (($vt['timestamp_from'] ?? 0) % 3600000) / 60000, (($vt['timestamp_from'] ?? 0) % 60000) / 1000, ($vt['timestamp_from'] ?? 0) % 1000),
+                                'timestamp_to' => sprintf('%02d:%02d:%02d.%03d', ($vt['timestamp_to'] ?? 0) / 3600000, (($vt['timestamp_to'] ?? 0) % 3600000) / 60000, (($vt['timestamp_to'] ?? 0) % 60000) / 1000, ($vt['timestamp_to'] ?? 0) % 1000),
+                                'segments' => $vt['segments'] ?? [],
+                            ];
+                        }
+
+                        // Save per-surah file
+                        file_put_contents(
+                            "{$timingDir}/surah-{$surah}.json",
+                            json_encode($surahData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
+                        );
+
+                        // Merge into combined file
+                        foreach ($surahData as $key => $segment) {
+                            $allData[$key] = $segment;
+                        }
+
+                        $successCount++;
                     }
-
-                    $successCount++;
                 }
             }
         } catch (\Throwable $e) {
