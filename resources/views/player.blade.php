@@ -898,6 +898,16 @@
             cursor: pointer;
         }
         .sync-btn:hover { background: rgba(255,255,255,0.2); }
+        .sync-tap-btn {
+            border-color: var(--accent);
+            color: var(--accent);
+            margin-right: 6px;
+        }
+        .sync-tap-btn:hover { background: rgba(194,139,59,0.15); }
+        .sync-tap-btn.synced {
+            border-color: rgba(255,255,255,0.1);
+            color: var(--muted);
+        }
         .sync-label {
             font-family: "Inter", sans-serif;
             font-size: 0.7rem;
@@ -980,9 +990,10 @@
             <div id="surah-display"></div>
             <div id="subtitle-overlay"></div>
             <div id="sync-controls" class="sync-controls">
-                <button id="sync-slower" class="sync-btn" title="Delay text (reciter is ahead)">−3s</button>
+                <button id="sync-tap" class="sync-btn sync-tap-btn" title="Tap when you hear the first word">Tap to sync</button>
+                <button id="sync-slower" class="sync-btn" title="Delay text 3s">−3s</button>
                 <span id="sync-label" class="sync-label">Sync: 0s</span>
-                <button id="sync-faster" class="sync-btn" title="Advance text (reciter is behind)">+3s</button>
+                <button id="sync-faster" class="sync-btn" title="Advance text 3s">+3s</button>
             </div>
             <div class="player">
                 <iframe id="yt-player" title="YouTube Quran Player" allow="autoplay; fullscreen" allowfullscreen hidden></iframe>
@@ -1975,6 +1986,7 @@
         let subtitleData = null;
         let currentSegmentId = -1;
         let subtitleOffset = 0; // seconds to shift subtitle timing (positive = delay text)
+        let currentSyncKey = null; // localStorage key for current video's sync offset
         let pendingSurahLoad = null;
         let surahListCache = null;
 
@@ -2119,16 +2131,27 @@
 
                 subtitleData = buildTimedSegments(ayahs, videoDuration, totalTimingDuration);
 
-                // Smart auto-offset: if the video is longer than the QUL reference,
-                // the extra time is likely intro/outro. Estimate a small intro offset
-                // so text doesn't run ahead of the reciter.
-                subtitleOffset = 0;
-                if (totalTimingDuration && videoDuration > totalTimingDuration * 1.03) {
-                    const extraTime = videoDuration - totalTimingDuration;
-                    // Assume ~3-5% of extra time is intro, capped at 90s
-                    subtitleOffset = Math.min(90, Math.round(extraTime * 0.04));
+                // Generate a sync key from the video URL for localStorage
+                currentSyncKey = 'qv_sync_' + input.value.trim().replace(/[^a-zA-Z0-9]/g, '_').slice(0, 80);
+
+                // Check localStorage for a previously saved offset for this video
+                const savedOffset = localStorage.getItem(currentSyncKey);
+                if (savedOffset !== null) {
+                    subtitleOffset = parseInt(savedOffset, 10) || 0;
+                    document.getElementById('sync-tap').classList.add('synced');
+                    document.getElementById('sync-tap').textContent = 'Synced';
+                } else {
+                    // Smart auto-offset: if video is longer than QUL reference,
+                    // estimate intro time so text doesn't run ahead of reciter
+                    subtitleOffset = 0;
+                    if (totalTimingDuration && videoDuration > totalTimingDuration * 1.03) {
+                        const extraTime = videoDuration - totalTimingDuration;
+                        subtitleOffset = Math.min(90, Math.round(extraTime * 0.04));
+                    }
+                    document.getElementById('sync-tap').classList.remove('synced');
+                    document.getElementById('sync-tap').textContent = 'Tap to sync';
                 }
-                syncLabel.textContent = 'Sync: ' + (subtitleOffset > 0 ? '+' : '') + subtitleOffset + 's';
+                updateSyncLabel();
                 syncControls.classList.add('visible');
             } catch (e) {
                 // API not available — silent fail
@@ -2353,17 +2376,39 @@
             if (t >= 0) updateSubtitles(t - subtitleOffset);
         })();
 
-        // Sync controls: +/- buttons to adjust subtitle offset
+        // Sync controls
         function updateSyncLabel() {
             syncLabel.textContent = 'Sync: ' + (subtitleOffset > 0 ? '+' : '') + subtitleOffset + 's';
         }
+        function saveSyncOffset() {
+            if (currentSyncKey) {
+                try { localStorage.setItem(currentSyncKey, subtitleOffset); } catch (e) {}
+            }
+        }
+
+        // "Tap to sync" — user taps when they hear the first word of the surah
+        document.getElementById('sync-tap').addEventListener('click', () => {
+            const t = getPlaybackTime();
+            if (t >= 0 && subtitleData) {
+                subtitleOffset = Math.round(t);
+                updateSyncLabel();
+                saveSyncOffset();
+                const tapBtn = document.getElementById('sync-tap');
+                tapBtn.classList.add('synced');
+                tapBtn.textContent = 'Synced';
+            }
+        });
+
+        // Fine-tune +/- buttons
         document.getElementById('sync-slower').addEventListener('click', () => {
             subtitleOffset += 3;
             updateSyncLabel();
+            saveSyncOffset();
         });
         document.getElementById('sync-faster').addEventListener('click', () => {
             subtitleOffset -= 3;
             updateSyncLabel();
+            saveSyncOffset();
         });
 
         // ── YouTube IFrame API ────────────────────────────────────────────
