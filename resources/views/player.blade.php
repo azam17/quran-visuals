@@ -265,6 +265,56 @@
             display: none;
         }
 
+        .cinema-share-btn {
+            position: absolute;
+            top: 18px;
+            left: 18px;
+            z-index: 100;
+            padding: 8px 18px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            font-family: "Inter", sans-serif;
+            font-size: 0.85rem;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.5s;
+            display: none;
+        }
+
+        .cinema-share-btn[hidden] {
+            display: none;
+        }
+
+        .stage:fullscreen .cinema-share-btn:not([hidden]),
+        .stage:-webkit-full-screen .cinema-share-btn:not([hidden]) {
+            display: block;
+        }
+
+        .cinema-share-btn.visible {
+            opacity: 1;
+        }
+
+        .cinema-share-btn .share-feedback {
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            padding: 6px 12px;
+            border-radius: 6px;
+            background: rgba(194, 139, 59, 0.9);
+            color: #fff;
+            font-size: 0.78rem;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .cinema-share-btn .share-feedback.show {
+            opacity: 1;
+        }
+
         /* In-stage preset selector (fullscreen only) */
         .stage-preset-select {
             position: absolute;
@@ -296,17 +346,11 @@
         .stage:fullscreen .player iframe {
             opacity: 0 !important;
             pointer-events: none !important;
-            position: absolute !important;
-            width: 1px !important;
-            height: 1px !important;
         }
 
         .stage:fullscreen .player audio {
             opacity: 0 !important;
             pointer-events: none !important;
-            position: absolute !important;
-            width: 1px !important;
-            height: 1px !important;
         }
 
         .stage:fullscreen .message {
@@ -333,17 +377,11 @@
         .stage:-webkit-full-screen .player iframe {
             opacity: 0 !important;
             pointer-events: none !important;
-            position: absolute !important;
-            width: 1px !important;
-            height: 1px !important;
         }
 
         .stage:-webkit-full-screen .player audio {
             opacity: 0 !important;
             pointer-events: none !important;
-            position: absolute !important;
-            width: 1px !important;
-            height: 1px !important;
         }
 
         .stage:-webkit-full-screen .message {
@@ -412,6 +450,7 @@
                 <div id="meta-warning"></div>
             </div>
             <button id="exit-cinema" class="cinema-exit-btn" hidden>Exit Cinema</button>
+            <button id="share-btn" class="cinema-share-btn" hidden>&#8599; Share<span class="share-feedback" id="share-feedback"></span></button>
             <button id="fullscreen-btn" class="cinema-fullscreen-btn" hidden>Go Fullscreen</button>
             <select id="stage-preset-select" class="stage-preset-select" aria-label="Change visual preset">
                 @foreach ($presets as $preset)
@@ -439,6 +478,8 @@
         const exitCinemaBtn = document.getElementById('exit-cinema');
         const fullscreenBtn = document.getElementById('fullscreen-btn');
         const stagePresetSelect = document.getElementById('stage-preset-select');
+        const shareBtn = document.getElementById('share-btn');
+        const shareFeedback = document.getElementById('share-feedback');
 
         let audioContext = null;
         let analyser = null;
@@ -796,27 +837,37 @@
             }
         }
 
-        let metaHideTimer = null;
+        let overlayHideTimer = null;
+        let mediaActive = false;
 
-        function startMetaHideTimer() {
-            clearTimeout(metaHideTimer);
+        function showOverlays() {
             meta.style.opacity = '1';
-            metaHideTimer = setTimeout(() => {
-                meta.style.opacity = '0';
-            }, 4000);
+            shareBtn.classList.add('visible');
+        }
+
+        function hideOverlays() {
+            meta.style.opacity = '0';
+            shareBtn.classList.remove('visible');
+        }
+
+        function startOverlayHideTimer() {
+            clearTimeout(overlayHideTimer);
+            showOverlays();
+            overlayHideTimer = setTimeout(hideOverlays, 4000);
         }
 
         function onFullscreenChange() {
             const isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
             exitCinemaBtn.hidden = !isFullscreen;
+            shareBtn.hidden = !(isFullscreen && mediaActive);
             fullscreenBtn.hidden = true;
             resizeCanvas();
 
             if (isFullscreen) {
-                startMetaHideTimer();
+                startOverlayHideTimer();
             } else {
-                clearTimeout(metaHideTimer);
-                meta.style.opacity = '1';
+                clearTimeout(overlayHideTimer);
+                showOverlays();
             }
         }
 
@@ -826,7 +877,7 @@
         stage.addEventListener('mousemove', () => {
             const isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
             if (isFullscreen) {
-                startMetaHideTimer();
+                startOverlayHideTimer();
             }
         });
 
@@ -834,6 +885,26 @@
         fullscreenBtn.addEventListener('click', () => {
             fullscreenBtn.hidden = true;
             enterCinema();
+        });
+
+        shareBtn.addEventListener('click', async () => {
+            const title = metaTitle.textContent || 'Quran Visuals';
+            const url = window.location.href;
+
+            if (navigator.share) {
+                try {
+                    await navigator.share({ title, url });
+                } catch (e) {
+                    // User cancelled share
+                }
+            } else {
+                await navigator.clipboard.writeText(url);
+                shareFeedback.textContent = 'Link copied!';
+                shareFeedback.classList.add('show');
+                setTimeout(() => shareFeedback.classList.remove('show'), 2000);
+            }
+
+            startOverlayHideTimer();
         });
 
         // ── Messages & meta ───────────────────────────────────────────────
@@ -893,6 +964,8 @@
 
                 message.hidden = true;
                 setMeta(data.title || 'Quran Recitation', data.author || 'Verified input');
+
+                mediaActive = true;
 
                 if (data.type === 'youtube') {
                     ytPlayer.src = data.embed_url;
