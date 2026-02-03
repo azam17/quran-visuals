@@ -591,6 +591,7 @@
         let ytMode = false;
         let ytPlaying = false;
         let ytApiPlayer = null;
+        let silentFrames = 0;
 
         // ── Audio frequency bands (smoothed) ────────────────────────────
         const audio = { bass: 0, mid: 0, high: 0, volume: 0, peak: 0, energy: 0 };
@@ -627,16 +628,41 @@
             audio.energy = audio.energy * 0.98 + rawVol * 0.02;
         }
 
+        // Pseudo-random hash for organic simulation
+        function simHash(n) {
+            return ((Math.sin(n) * 43758.5453) % 1 + 1) % 1;
+        }
+
         function simulateFrequencies() {
             const t = performance.now() / 1000;
-            const base = 0.35 + Math.sin(t * 0.7) * 0.15 + Math.sin(t * 1.3) * 0.1;
-            audio.bass += (base * 1.2 - audio.bass) * 0.15;
-            audio.mid += (base * 0.9 - audio.mid) * 0.15;
-            audio.high += (base * 0.5 + Math.sin(t * 3.7) * 0.15 - audio.high) * 0.15;
-            audio.volume += (base - audio.volume) * 0.15;
-            if (base > audio.peak) audio.peak = base;
-            else audio.peak *= 0.95;
-            audio.energy = audio.energy * 0.98 + base * 0.02;
+
+            // Multiple layered rhythms for organic feel
+            const slow = Math.sin(t * 0.4) * 0.5 + 0.5;       // Breathing rhythm
+            const med = Math.sin(t * 1.1) * 0.5 + 0.5;        // Phrase rhythm
+            const fast = Math.sin(t * 2.7) * 0.5 + 0.5;       // Word rhythm
+            const pulse = Math.pow(Math.sin(t * 1.8), 8);      // Sharp peaks
+
+            // Pseudo-random variation so it doesn't feel like a loop
+            const drift = simHash(Math.floor(t * 0.3)) * 0.2;
+            const jitter = simHash(Math.floor(t * 4)) * 0.15;
+
+            // Recitation has strong bass presence, variable mid, subtle high
+            const rawBass = 0.25 + slow * 0.35 + pulse * 0.25 + drift;
+            const rawMid = 0.15 + med * 0.3 + fast * 0.15 + jitter;
+            const rawHigh = 0.05 + fast * 0.2 + pulse * 0.1;
+            const rawVol = rawBass * 0.5 + rawMid * 0.3 + rawHigh * 0.2;
+
+            // Smooth with faster attack (0.25) for responsiveness
+            audio.bass += (rawBass - audio.bass) * 0.25;
+            audio.mid += (rawMid - audio.mid) * 0.25;
+            audio.high += (rawHigh - audio.high) * 0.3;
+            audio.volume += (rawVol - audio.volume) * 0.25;
+
+            // Peak — fast attack, slow decay
+            if (rawVol > audio.peak) audio.peak = rawVol;
+            else audio.peak *= 0.93;
+
+            audio.energy = audio.energy * 0.97 + rawVol * 0.03;
         }
 
         // ── Color utilities ───────────────────────────────────────────────
@@ -1093,6 +1119,10 @@
             ctx.scale(ratio, ratio);
         }
 
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+        }
+
         function applyPreset(presetId) {
             const preset = presets.find((item) => item.id === presetId) || presets[0];
             Object.entries(preset.vars).forEach(([key, value]) => {
@@ -1105,6 +1135,8 @@
             if (preset._originalLayers) {
                 preset.layers = JSON.parse(JSON.stringify(preset._originalLayers));
             }
+            // Clear old effect trails
+            clearCanvas();
         }
 
         // Store original layer colors for each preset so we can remap them
@@ -1127,7 +1159,12 @@
 
             const preset = getCurrentPreset();
             const hsl = hexToHsl(hex);
-            preset.layers = getLayersForHue(hsl.h, hex, darker);
+            const newLayers = getLayersForHue(hsl.h, hex, darker);
+            // Only clear canvas if effect type changed (not just color tweak)
+            const oldEffect = preset.layers[0] && preset.layers[0].effect;
+            const newEffect = newLayers[0] && newLayers[0].effect;
+            if (oldEffect !== newEffect) clearCanvas();
+            preset.layers = newLayers;
         }
 
         // averageVolume kept for backwards compat but unused in draw loop
@@ -1167,12 +1204,20 @@
             const width = canvas.clientWidth;
             const height = canvas.clientHeight;
 
-            // Clear canvas — fast clear when quiet (clean bg), slower fade when loud (trails)
+            // Fade old frames — faster when quiet so trails clear sooner
             const activity = audio.volume + audio.peak;
             if (activity < 0.02) {
-                ctx.clearRect(0, 0, width, height);
+                silentFrames++;
+                // After ~30 silent frames (~0.5s), fully clear
+                if (silentFrames > 30) {
+                    ctx.clearRect(0, 0, width, height);
+                } else {
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                    ctx.fillRect(0, 0, width, height);
+                }
             } else {
-                const fade = 0.15 + audio.volume * 0.1;
+                silentFrames = 0;
+                const fade = 0.12 + audio.volume * 0.12;
                 ctx.fillStyle = `rgba(0, 0, 0, ${fade})`;
                 ctx.fillRect(0, 0, width, height);
             }
@@ -1218,16 +1263,20 @@
             ytApiPlayer = new YT.Player('yt-player', {
                 events: {
                     onStateChange: function(event) {
-                        if (event.data === YT.PlayerState.PLAYING) {
+                        const state = event.data;
+                        if (state === YT.PlayerState.PLAYING) {
                             ytPlaying = true;
                             syncPlayPauseIcon(true);
-                        } else {
+                        } else if (state === YT.PlayerState.BUFFERING) {
+                            // Keep simulation running during buffering
+                            ytPlaying = true;
+                        } else if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.ENDED) {
                             ytPlaying = false;
                             syncPlayPauseIcon(false);
                         }
                     },
                     onReady: function() {
-                        ytPlaying = true;
+                        // Don't set ytPlaying here — wait for PLAYING state
                     },
                 },
             });
