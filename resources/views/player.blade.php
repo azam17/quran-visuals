@@ -672,45 +672,44 @@
         function getLayersForHue(hue, color, darker) {
             const base = { effect: 'gradientGlow', params: { color: color } };
             if ((hue >= 0 && hue < 30) || hue >= 330) {
-                // Red/Pink — Energetic
+                // Red — Energetic
                 return [
                     base,
-                    { effect: 'pulseRing', params: { color: color } },
-                    { effect: 'waveLine', params: { color: darker, yPosition: 0.78 } },
-                    { effect: 'particles', params: { color: color, count: 60, shape: 'circle' } },
+                    { effect: 'mirroredBars', params: { color: color, count: 48 } },
+                    { effect: 'circularWave', params: { color: darker, rings: 1 } },
+                    { effect: 'particles', params: { color: color, count: 40, shape: 'circle' } },
                 ];
             } else if (hue >= 30 && hue < 70) {
-                // Orange/Gold — Classic
+                // Orange — Warm
                 return [
                     base,
-                    { effect: 'concentricArcs', params: { color: color, count: 5 } },
-                    { effect: 'particles', params: { color: darker, count: 50, shape: 'square' } },
-                    { effect: 'waveLine', params: { color: color, yPosition: 0.78 } },
+                    { effect: 'mirroredWave', params: { color: color, layerCount: 3 } },
+                    { effect: 'horizonGlow', params: { color: darker, yPosition: 0.7 } },
+                    { effect: 'particles', params: { color: color, count: 30, shape: 'square' } },
                 ];
             } else if (hue >= 70 && hue < 170) {
                 // Green — Organic
                 return [
                     base,
-                    { effect: 'nebulaClouds', params: { color: color } },
-                    { effect: 'starField', params: { color: darker, count: 100 } },
-                    { effect: 'particles', params: { color: color, count: 40, shape: 'circle' } },
-                    { effect: 'waveLine', params: { color: darker, yPosition: 0.78 } },
+                    { effect: 'horizonGlow', params: { color: color, yPosition: 0.65, rays: 8 } },
+                    { effect: 'mirroredWave', params: { color: darker, layerCount: 2 } },
+                    { effect: 'starField', params: { color: color, count: 50 } },
                 ];
             } else if (hue >= 170 && hue < 260) {
-                // Blue/Cyan — Structured
+                // Blue — Structured
                 return [
                     base,
-                    { effect: 'verticalBars', params: { color: color, count: 48 } },
-                    { effect: 'concentricArcs', params: { color: darker, count: 5 } },
-                    { effect: 'particles', params: { color: color, count: 50, shape: 'circle' } },
+                    { effect: 'circularWave', params: { color: color, rings: 3 } },
+                    { effect: 'mirroredBars', params: { color: darker, count: 32 } },
+                    { effect: 'waveLine', params: { color: color, yPosition: 0.78 } },
                 ];
             } else {
                 // Purple (260-330) — Mystical
                 return [
                     base,
-                    { effect: 'geometricMandala', params: { color: color, sides: 6 } },
-                    { effect: 'starField', params: { color: darker, count: 100 } },
-                    { effect: 'nebulaClouds', params: { color: color } },
+                    { effect: 'oscilloscope', params: { color: color, freqX: 3, freqY: 2 } },
+                    { effect: 'mirroredWave', params: { color: darker, layerCount: 2 } },
+                    { effect: 'starField', params: { color: color, count: 50 } },
                 ];
             }
         }
@@ -916,6 +915,194 @@
                     ctx.stroke();
                 }
                 ctx.shadowBlur = 0;
+                ctx.restore();
+            },
+
+            mirroredWave(ctx, w, h, a, flowOffset, params) {
+                const color = params.color || '#ffffff';
+                const layerCount = params.layerCount || 3;
+                const yCenter = (params.yCenter || 0.5) * h;
+                const c = hexToRgb(color);
+                ctx.save();
+                ctx.shadowBlur = 6 + a.bass * 20;
+                ctx.shadowColor = color;
+                for (let layer = 0; layer < layerCount; layer++) {
+                    const band = layer === 0 ? a.bass : layer === 1 ? a.mid : a.high;
+                    const amplitude = 10 + band * 80 + a.peak * 30 - layer * 10;
+                    const freq = 0.008 + layer * 0.004 + a.high * 0.003;
+                    const speed = 1.5 + layer * 0.6;
+                    const alpha = 0.12 + band * 0.35 - layer * 0.02;
+                    // Build top wave points
+                    const points = [];
+                    for (let x = 0; x <= w; x += 6) {
+                        const wave = Math.sin(flowOffset * speed + x * freq) * amplitude
+                            + Math.sin(flowOffset * speed * 0.6 + x * freq * 2.1) * (a.high * 12);
+                        points.push({ x, y: wave });
+                    }
+                    // Draw fill between mirrored waves
+                    ctx.beginPath();
+                    for (let i = 0; i < points.length; i++) {
+                        const px = points[i].x;
+                        const py = yCenter - points[i].y;
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    for (let i = points.length - 1; i >= 0; i--) {
+                        ctx.lineTo(points[i].x, yCenter + points[i].y);
+                    }
+                    ctx.closePath();
+                    const grad = ctx.createLinearGradient(0, yCenter - amplitude, 0, yCenter + amplitude);
+                    grad.addColorStop(0, `rgba(${c.r}, ${c.g}, ${c.b}, 0)`);
+                    grad.addColorStop(0.4, `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha * 0.5})`);
+                    grad.addColorStop(0.5, `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`);
+                    grad.addColorStop(0.6, `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha * 0.5})`);
+                    grad.addColorStop(1, `rgba(${c.r}, ${c.g}, ${c.b}, 0)`);
+                    ctx.fillStyle = grad;
+                    ctx.fill();
+                    // Stroke the top and bottom edges
+                    ctx.beginPath();
+                    for (let i = 0; i < points.length; i++) {
+                        if (i === 0) ctx.moveTo(points[i].x, yCenter - points[i].y);
+                        else ctx.lineTo(points[i].x, yCenter - points[i].y);
+                    }
+                    ctx.strokeStyle = rgba(color, alpha * 0.8);
+                    ctx.lineWidth = 1.2 + a.bass * 2;
+                    ctx.stroke();
+                    ctx.beginPath();
+                    for (let i = 0; i < points.length; i++) {
+                        if (i === 0) ctx.moveTo(points[i].x, yCenter + points[i].y);
+                        else ctx.lineTo(points[i].x, yCenter + points[i].y);
+                    }
+                    ctx.stroke();
+                }
+                ctx.shadowBlur = 0;
+                ctx.restore();
+            },
+
+            circularWave(ctx, w, h, a, flowOffset, params) {
+                const color = params.color || '#ffffff';
+                const rings = params.rings || 2;
+                const baseRadius = params.baseRadius || 0.22 * Math.min(w, h);
+                ctx.save();
+                ctx.translate(w / 2, h / 2);
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.shadowBlur = 10 + a.bass * 30;
+                ctx.shadowColor = color;
+                const segments = 180;
+                for (let ring = 0; ring < rings; ring++) {
+                    const rBase = baseRadius + ring * 35 + a.bass * 60;
+                    const waveAmp = 5 + a.mid * 50 + a.peak * 20 - ring * 5;
+                    const detail = a.high * 15;
+                    const alpha = 0.15 + a.volume * 0.4 - ring * 0.03;
+                    const bright = 1 + a.peak * 0.5;
+                    ctx.beginPath();
+                    for (let i = 0; i <= segments; i++) {
+                        const angle = (Math.PI * 2 / segments) * i;
+                        const wave = Math.sin(angle * 8 + flowOffset * 2 + ring) * waveAmp
+                            + Math.sin(angle * 16 + flowOffset * 3.5) * detail;
+                        const r = rBase + wave;
+                        const x = Math.cos(angle) * r;
+                        const y = Math.sin(angle) * r;
+                        if (i === 0) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    }
+                    ctx.closePath();
+                    ctx.strokeStyle = rgba(color, Math.min(1, alpha * bright));
+                    ctx.lineWidth = 1.5 + a.bass * 3 - ring * 0.3;
+                    ctx.stroke();
+                }
+                ctx.shadowBlur = 0;
+                ctx.restore();
+            },
+
+            mirroredBars(ctx, w, h, a, flowOffset, params) {
+                const color = params.color || '#ffffff';
+                const count = params.count || 64;
+                const barWidth = w / count;
+                const centerY = h / 2;
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                for (let i = 0; i < count; i++) {
+                    const ratio = i / count;
+                    let barAudio;
+                    if (ratio < 0.33) barAudio = a.bass;
+                    else if (ratio < 0.66) barAudio = a.mid;
+                    else barAudio = a.high;
+                    const jitter = Math.sin(flowOffset * 3 + i * 0.5) * 0.12;
+                    const barHeight = (barAudio * 0.6 + jitter + a.peak * 0.2) * h * 0.4;
+                    const x = i * barWidth;
+                    const alpha = 0.1 + barAudio * 0.5;
+                    ctx.fillStyle = rgba(color, alpha);
+                    // Bar upward from center
+                    ctx.fillRect(x, centerY - Math.max(2, barHeight), barWidth - 1, Math.max(2, barHeight));
+                    // Mirrored bar downward from center
+                    ctx.fillRect(x, centerY, barWidth - 1, Math.max(2, barHeight));
+                }
+                ctx.restore();
+            },
+
+            oscilloscope(ctx, w, h, a, flowOffset, params) {
+                const color = params.color || '#ffffff';
+                const freqX = params.freqX || 3;
+                const freqY = params.freqY || 2;
+                const size = (params.size || 0.35) * Math.min(w, h);
+                ctx.save();
+                ctx.translate(w / 2, h / 2);
+                ctx.shadowBlur = 8 + a.bass * 25;
+                ctx.shadowColor = color;
+                const scale = size + a.bass * 40;
+                const phase = flowOffset * (0.5 + a.mid * 1.5);
+                const harmonic = a.high * 0.3;
+                const points = 360;
+                ctx.beginPath();
+                for (let i = 0; i <= points; i++) {
+                    const t = (i / points) * Math.PI * 2;
+                    const x = Math.sin(freqX * t + phase + Math.sin(t * 5) * harmonic) * scale;
+                    const y = Math.sin(freqY * t) * scale;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+                ctx.strokeStyle = rgba(color, 0.15 + a.volume * 0.5 + a.peak * 0.15);
+                ctx.lineWidth = 1.5 + a.bass * 3;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                ctx.restore();
+            },
+
+            horizonGlow(ctx, w, h, a, flowOffset, params) {
+                const color = params.color || '#ffffff';
+                const yPosition = params.yPosition || 0.65;
+                const rays = params.rays || 0;
+                const c = hexToRgb(color);
+                const yCenter = h * yPosition;
+                const spread = 40 + a.bass * 100;
+                const intensity = 0.08 + a.volume * 0.3;
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                // Horizontal glow band
+                const grad = ctx.createLinearGradient(0, yCenter - spread, 0, yCenter + spread);
+                grad.addColorStop(0, `rgba(${c.r}, ${c.g}, ${c.b}, 0)`);
+                grad.addColorStop(0.35, `rgba(${c.r}, ${c.g}, ${c.b}, ${intensity * 0.4})`);
+                grad.addColorStop(0.5, `rgba(${c.r}, ${c.g}, ${c.b}, ${intensity})`);
+                grad.addColorStop(0.65, `rgba(${c.r}, ${c.g}, ${c.b}, ${intensity * 0.4})`);
+                grad.addColorStop(1, `rgba(${c.r}, ${c.g}, ${c.b}, 0)`);
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, yCenter - spread, w, spread * 2);
+                // Light rays
+                if (rays > 0) {
+                    for (let i = 0; i < rays; i++) {
+                        const rx = (w / (rays + 1)) * (i + 1) + Math.sin(flowOffset + i) * 20;
+                        const rayHeight = 60 + a.high * 120 + Math.sin(flowOffset * 2 + i * 1.3) * 30;
+                        const rayWidth = 2 + a.peak * 4;
+                        const rayAlpha = 0.04 + a.high * 0.15;
+                        const rayGrad = ctx.createLinearGradient(0, yCenter, 0, yCenter - rayHeight);
+                        rayGrad.addColorStop(0, `rgba(${c.r}, ${c.g}, ${c.b}, ${rayAlpha})`);
+                        rayGrad.addColorStop(1, `rgba(${c.r}, ${c.g}, ${c.b}, 0)`);
+                        ctx.fillStyle = rayGrad;
+                        ctx.fillRect(rx - rayWidth / 2, yCenter - rayHeight, rayWidth, rayHeight);
+                    }
+                }
                 ctx.restore();
             },
         };
