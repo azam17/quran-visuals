@@ -527,6 +527,53 @@
         let ytPlaying = false;
         let ytApiPlayer = null;
 
+        // ── Audio frequency bands (smoothed) ────────────────────────────
+        const audio = { bass: 0, mid: 0, high: 0, volume: 0, peak: 0, energy: 0 };
+        const smoothing = 0.3; // Lower = smoother, higher = snappier
+
+        function analyseFrequencies(data) {
+            if (!data || !data.length) return;
+            const len = data.length;
+            // Split spectrum into 3 bands
+            const bassEnd = Math.floor(len * 0.15);   // ~0-300Hz
+            const midEnd = Math.floor(len * 0.5);      // ~300-2kHz
+            let bassSum = 0, midSum = 0, highSum = 0;
+            for (let i = 0; i < len; i++) {
+                if (i < bassEnd) bassSum += data[i];
+                else if (i < midEnd) midSum += data[i];
+                else highSum += data[i];
+            }
+            const rawBass = bassSum / bassEnd / 255;
+            const rawMid = midSum / (midEnd - bassEnd) / 255;
+            const rawHigh = highSum / (len - midEnd) / 255;
+            const rawVol = (bassSum + midSum + highSum) / len / 255;
+
+            // Smooth transitions
+            audio.bass += (rawBass - audio.bass) * smoothing;
+            audio.mid += (rawMid - audio.mid) * smoothing;
+            audio.high += (rawHigh - audio.high) * smoothing;
+            audio.volume += (rawVol - audio.volume) * smoothing;
+
+            // Peak — fast attack, slow decay for punch detection
+            if (rawVol > audio.peak) audio.peak = rawVol;
+            else audio.peak *= 0.95;
+
+            // Energy — running accumulator for long-term intensity
+            audio.energy = audio.energy * 0.98 + rawVol * 0.02;
+        }
+
+        function simulateFrequencies() {
+            const t = performance.now() / 1000;
+            const base = 0.35 + Math.sin(t * 0.7) * 0.15 + Math.sin(t * 1.3) * 0.1;
+            audio.bass += (base * 1.2 - audio.bass) * 0.15;
+            audio.mid += (base * 0.9 - audio.mid) * 0.15;
+            audio.high += (base * 0.5 + Math.sin(t * 3.7) * 0.15 - audio.high) * 0.15;
+            audio.volume += (base - audio.volume) * 0.15;
+            if (base > audio.peak) audio.peak = base;
+            else audio.peak *= 0.95;
+            audio.energy = audio.energy * 0.98 + base * 0.02;
+        }
+
         // ── Color utilities ───────────────────────────────────────────────
 
         function hexToRgb(hex) {
@@ -542,50 +589,56 @@
         }
 
         // ── Effect registry ───────────────────────────────────────────────
+        // Each effect receives: ctx, w, h, audio{bass,mid,high,volume,peak,energy}, flowOffset, params
 
         const effects = {
 
-            gradientGlow(ctx, w, h, volume, flowOffset, params) {
-                const glow = 0.2 + volume * 0.9;
+            gradientGlow(ctx, w, h, a, flowOffset, params) {
                 const color = params.color || '#ffffff';
+                const intensity = 0.06 + a.bass * 0.35 + a.peak * 0.15;
                 const gradient = ctx.createLinearGradient(0, 0, w, h);
-                gradient.addColorStop(0, rgba(color, 0.08 + glow * 0.18));
+                gradient.addColorStop(0, rgba(color, intensity));
+                gradient.addColorStop(0.5, rgba(color, intensity * 0.3));
                 gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
                 ctx.fillStyle = gradient;
                 ctx.fillRect(0, 0, w, h);
             },
 
-            concentricArcs(ctx, w, h, volume, flowOffset, params) {
+            concentricArcs(ctx, w, h, a, flowOffset, params) {
                 const color = params.color || '#ffffff';
                 const count = params.count || 5;
-                const glow = 0.2 + volume * 0.9;
                 ctx.save();
                 ctx.translate(w / 2, h / 2);
-                ctx.shadowBlur = 15 + volume * 25;
+                ctx.shadowBlur = 10 + a.bass * 40;
                 ctx.shadowColor = color;
                 for (let i = 0; i < count; i++) {
-                    const radius = (Math.min(w, h) / 5) + i * 50 + volume * 120;
+                    const expand = a.bass * 180 + a.peak * 60;
+                    const radius = (Math.min(w, h) / 5) + i * 50 + expand;
+                    const alpha = 0.08 + a.mid * 0.4 + a.peak * 0.15;
                     ctx.beginPath();
-                    ctx.strokeStyle = rgba(color, 0.12 + glow * 0.3);
-                    ctx.lineWidth = 2 + volume * 2;
-                    ctx.arc(0, 0, radius, flowOffset + i, Math.PI * 1.2 + flowOffset + i);
+                    ctx.strokeStyle = rgba(color, alpha);
+                    ctx.lineWidth = 1.5 + a.bass * 4;
+                    const arcLen = Math.PI * (0.8 + a.volume * 0.8);
+                    ctx.arc(0, 0, radius, flowOffset + i, arcLen + flowOffset + i);
                     ctx.stroke();
                 }
                 ctx.shadowBlur = 0;
                 ctx.restore();
             },
 
-            particles(ctx, w, h, volume, flowOffset, params) {
+            particles(ctx, w, h, a, flowOffset, params) {
                 const color = params.color || '#ffffff';
-                const count = params.count || 60;
+                const baseCount = params.count || 60;
+                const count = Math.floor(baseCount + a.peak * 40);
                 const shape = params.shape || 'square';
                 ctx.save();
                 ctx.globalCompositeOperation = 'lighter';
+                const speed = 1 + a.energy * 3;
                 for (let i = 0; i < count; i++) {
-                    const x = (Math.sin(flowOffset * 2 + i) * 0.4 + 0.5) * w;
-                    const y = (Math.cos(flowOffset * 1.3 + i) * 0.4 + 0.5) * h;
-                    const size = 3 + volume * 10;
-                    ctx.fillStyle = rgba(color, 0.1 + volume * 0.35);
+                    const x = (Math.sin(flowOffset * speed + i) * (0.3 + a.high * 0.2) + 0.5) * w;
+                    const y = (Math.cos(flowOffset * speed * 0.7 + i) * (0.3 + a.bass * 0.2) + 0.5) * h;
+                    const size = 2 + a.mid * 12 + a.peak * 8;
+                    ctx.fillStyle = rgba(color, 0.06 + a.volume * 0.4);
                     if (shape === 'circle') {
                         ctx.beginPath();
                         ctx.arc(x, y, size / 2, 0, Math.PI * 2);
@@ -597,18 +650,21 @@
                 ctx.restore();
             },
 
-            waveLine(ctx, w, h, volume, flowOffset, params) {
+            waveLine(ctx, w, h, a, flowOffset, params) {
                 const color = params.color || '#ffffff';
                 const yPos = params.yPosition || 0.78;
+                const amplitude = 8 + a.bass * 60 + a.mid * 30;
+                const freq = 0.015 + a.high * 0.01;
                 ctx.save();
-                ctx.globalAlpha = 0.5;
-                ctx.shadowBlur = 8 + volume * 15;
+                ctx.globalAlpha = 0.3 + a.volume * 0.5;
+                ctx.shadowBlur = 6 + a.bass * 25;
                 ctx.shadowColor = color;
-                ctx.strokeStyle = rgba(color, 0.2 + volume * 0.5);
-                ctx.lineWidth = 2 + volume * 2;
+                ctx.strokeStyle = rgba(color, 0.15 + a.volume * 0.6);
+                ctx.lineWidth = 1.5 + a.bass * 4;
                 ctx.beginPath();
-                for (let x = 0; x < w; x += 12) {
-                    const wave = Math.sin(flowOffset * 2 + x * 0.02) * (12 + volume * 40);
+                for (let x = 0; x < w; x += 8) {
+                    const wave = Math.sin(flowOffset * 2.5 + x * freq) * amplitude
+                        + Math.sin(flowOffset * 1.2 + x * freq * 2.3) * (a.high * 15);
                     ctx.lineTo(x, h * yPos + wave);
                 }
                 ctx.stroke();
@@ -616,21 +672,21 @@
                 ctx.restore();
             },
 
-            pulseRing(ctx, w, h, volume, flowOffset, params) {
+            pulseRing(ctx, w, h, a, flowOffset, params) {
                 const color = params.color || '#ffffff';
                 const maxRadius = Math.min(w, h) * 0.4;
-                const pulse = (Math.sin(flowOffset * 3) * 0.5 + 0.5);
-                const radius = maxRadius * (0.3 + pulse * 0.4 + volume * 0.3);
+                const rings = 3 + Math.floor(a.peak * 3);
                 ctx.save();
                 ctx.translate(w / 2, h / 2);
-                ctx.shadowBlur = 20 + volume * 30;
+                ctx.shadowBlur = 15 + a.bass * 45;
                 ctx.shadowColor = color;
-                for (let i = 0; i < 3; i++) {
-                    const r = radius + i * 20;
-                    const alpha = (0.3 - i * 0.04) + volume * 0.2;
+                for (let i = 0; i < rings; i++) {
+                    const pulse = Math.sin(flowOffset * 3 + i * 0.7) * 0.5 + 0.5;
+                    const r = maxRadius * (0.2 + pulse * 0.3 + a.bass * 0.4) + i * 25;
+                    const alpha = (0.2 - i * 0.03) + a.volume * 0.35;
                     ctx.beginPath();
-                    ctx.strokeStyle = rgba(color, Math.max(0, alpha));
-                    ctx.lineWidth = 3 + volume * 2 - i * 0.5;
+                    ctx.strokeStyle = rgba(color, Math.max(0.02, alpha));
+                    ctx.lineWidth = 2 + a.bass * 4 - i * 0.3;
                     ctx.arc(0, 0, r, 0, Math.PI * 2);
                     ctx.stroke();
                 }
@@ -638,20 +694,20 @@
                 ctx.restore();
             },
 
-            starField(ctx, w, h, volume, flowOffset, params) {
+            starField(ctx, w, h, a, flowOffset, params) {
                 const color = params.color || '#ffffff';
                 const count = params.count || 100;
                 ctx.save();
                 ctx.globalCompositeOperation = 'lighter';
                 for (let i = 0; i < count; i++) {
-                    // Deterministic positions seeded by index
                     const sx = ((Math.sin(i * 127.1) * 43758.5453) % 1 + 1) % 1;
                     const sy = ((Math.sin(i * 269.5) * 18642.3217) % 1 + 1) % 1;
                     const x = sx * w;
                     const y = sy * h;
                     const twinkle = Math.sin(flowOffset * 2 + i * 1.7) * 0.5 + 0.5;
-                    const size = 1.5 + twinkle * 2.5 + volume * 3;
-                    ctx.fillStyle = rgba(color, 0.2 + twinkle * 0.5 + volume * 0.15);
+                    const burst = (i % 7 === 0) ? a.peak * 6 : 0;
+                    const size = 1 + twinkle * 2 + a.high * 4 + burst;
+                    ctx.fillStyle = rgba(color, 0.15 + twinkle * 0.4 + a.volume * 0.25);
                     ctx.beginPath();
                     ctx.arc(x, y, size, 0, Math.PI * 2);
                     ctx.fill();
@@ -659,38 +715,45 @@
                 ctx.restore();
             },
 
-            verticalBars(ctx, w, h, volume, flowOffset, params) {
+            verticalBars(ctx, w, h, a, flowOffset, params) {
                 const color = params.color || '#ffffff';
                 const count = params.count || 48;
                 const barWidth = w / count;
                 ctx.save();
                 ctx.globalCompositeOperation = 'lighter';
                 for (let i = 0; i < count; i++) {
-                    const freq = Math.sin(flowOffset * 3 + i * 0.3) * 0.5 + 0.5;
-                    const barHeight = (freq * 0.3 + volume * 0.5) * h * 0.5;
+                    // Map each bar to a simulated frequency bin
+                    const ratio = i / count;
+                    let barAudio;
+                    if (ratio < 0.33) barAudio = a.bass;
+                    else if (ratio < 0.66) barAudio = a.mid;
+                    else barAudio = a.high;
+                    const jitter = Math.sin(flowOffset * 3 + i * 0.5) * 0.15;
+                    const barHeight = (barAudio * 0.7 + jitter + a.peak * 0.2) * h * 0.6;
                     const x = i * barWidth;
-                    ctx.fillStyle = rgba(color, 0.15 + freq * 0.25 + volume * 0.15);
-                    ctx.fillRect(x, h - barHeight, barWidth - 1, barHeight);
+                    ctx.fillStyle = rgba(color, 0.1 + barAudio * 0.45);
+                    ctx.fillRect(x, h - Math.max(2, barHeight), barWidth - 1, Math.max(2, barHeight));
                 }
                 ctx.restore();
             },
 
-            nebulaClouds(ctx, w, h, volume, flowOffset, params) {
+            nebulaClouds(ctx, w, h, a, flowOffset, params) {
                 const color = params.color || '#ffffff';
                 const c = hexToRgb(color);
                 ctx.save();
                 ctx.globalCompositeOperation = 'lighter';
                 const blobs = [
-                    { xf: 0.3, yf: 0.4, rf: 0.25, speed: 0.7 },
-                    { xf: 0.7, yf: 0.6, rf: 0.3, speed: 1.1 },
-                    { xf: 0.5, yf: 0.3, rf: 0.2, speed: 0.9 },
+                    { xf: 0.3, yf: 0.4, rf: 0.25, speed: 0.7, band: 'bass' },
+                    { xf: 0.7, yf: 0.6, rf: 0.3, speed: 1.1, band: 'mid' },
+                    { xf: 0.5, yf: 0.3, rf: 0.2, speed: 0.9, band: 'high' },
                 ];
                 for (const blob of blobs) {
-                    const bx = w * blob.xf + Math.sin(flowOffset * blob.speed) * w * 0.08;
-                    const by = h * blob.yf + Math.cos(flowOffset * blob.speed * 0.8) * h * 0.06;
-                    const br = Math.min(w, h) * blob.rf + volume * 40;
+                    const bandVal = a[blob.band];
+                    const bx = w * blob.xf + Math.sin(flowOffset * blob.speed) * w * (0.06 + bandVal * 0.06);
+                    const by = h * blob.yf + Math.cos(flowOffset * blob.speed * 0.8) * h * 0.05;
+                    const br = Math.min(w, h) * blob.rf + bandVal * 80 + a.peak * 30;
                     const grad = ctx.createRadialGradient(bx, by, 0, bx, by, br);
-                    grad.addColorStop(0, `rgba(${c.r}, ${c.g}, ${c.b}, ${0.1 + volume * 0.15})`);
+                    grad.addColorStop(0, `rgba(${c.r}, ${c.g}, ${c.b}, ${0.06 + bandVal * 0.2})`);
                     grad.addColorStop(1, `rgba(${c.r}, ${c.g}, ${c.b}, 0)`);
                     ctx.fillStyle = grad;
                     ctx.fillRect(bx - br, by - br, br * 2, br * 2);
@@ -698,24 +761,27 @@
                 ctx.restore();
             },
 
-            geometricMandala(ctx, w, h, volume, flowOffset, params) {
+            geometricMandala(ctx, w, h, a, flowOffset, params) {
                 const color = params.color || '#ffffff';
                 const sides = params.sides || 6;
-                const layers = 4;
+                const layerCount = 4 + Math.floor(a.peak * 3);
                 ctx.save();
                 ctx.translate(w / 2, h / 2);
-                ctx.shadowBlur = 12 + volume * 20;
+                ctx.shadowBlur = 8 + a.bass * 30;
                 ctx.shadowColor = color;
-                for (let layer = 0; layer < layers; layer++) {
-                    const radius = 60 + layer * 50 + volume * 80;
-                    const rotation = flowOffset * (0.5 + layer * 0.2) * (layer % 2 === 0 ? 1 : -1);
+                for (let layer = 0; layer < layerCount; layer++) {
+                    const expand = a.bass * 120 + a.mid * 40;
+                    const radius = 50 + layer * 45 + expand;
+                    const speed = (0.4 + a.energy * 0.8 + layer * 0.15) * (layer % 2 === 0 ? 1 : -1);
+                    const rotation = flowOffset * speed;
                     ctx.beginPath();
-                    ctx.strokeStyle = rgba(color, 0.15 + volume * 0.3 - layer * 0.015);
-                    ctx.lineWidth = 2.5 - layer * 0.2;
+                    ctx.strokeStyle = rgba(color, 0.1 + a.volume * 0.4 - layer * 0.01);
+                    ctx.lineWidth = 2 + a.bass * 3 - layer * 0.15;
                     for (let i = 0; i <= sides; i++) {
                         const angle = (Math.PI * 2 / sides) * i + rotation;
-                        const x = Math.cos(angle) * radius;
-                        const y = Math.sin(angle) * radius;
+                        const wobble = 1 + Math.sin(flowOffset * 2 + i + layer) * a.high * 0.15;
+                        const x = Math.cos(angle) * radius * wobble;
+                        const y = Math.sin(angle) * radius * wobble;
                         if (i === 0) ctx.moveTo(x, y);
                         else ctx.lineTo(x, y);
                     }
@@ -792,12 +858,11 @@
             });
         }
 
+        // averageVolume kept for backwards compat but unused in draw loop
         function averageVolume(data) {
             if (!data) return 0;
             let sum = 0;
-            for (let i = 0; i < data.length; i += 1) {
-                sum += data[i];
-            }
+            for (let i = 0; i < data.length; i++) sum += data[i];
             return sum / data.length / 255;
         }
 
@@ -821,14 +886,7 @@
             analyser.connect(audioContext.destination);
         }
 
-        function simulatedVolume() {
-            const t = performance.now() / 1000;
-            return 0.35
-                + Math.sin(t * 0.7) * 0.15
-                + Math.sin(t * 1.3) * 0.10
-                + Math.sin(t * 2.7) * 0.06
-                + Math.sin(t * 4.1) * 0.04;
-        }
+        // simulatedVolume() removed — replaced by simulateFrequencies()
 
         // ── Draw visuals (reads preset layers each frame) ─────────────────
 
@@ -836,24 +894,26 @@
             requestAnimationFrame(drawVisuals);
             const width = canvas.clientWidth;
             const height = canvas.clientHeight;
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+
+            // Faster fade when loud = crisper visuals, slower fade when quiet = trails
+            const fade = 0.12 + audio.volume * 0.08;
+            ctx.fillStyle = `rgba(0, 0, 0, ${fade})`;
             ctx.fillRect(0, 0, width, height);
 
-            let volume;
+            // Analyse audio
             if (analyser) {
                 analyser.getByteFrequencyData(analyserData);
-                volume = averageVolume(analyserData);
+                analyseFrequencies(analyserData);
             } else if (ytMode && ytPlaying) {
-                volume = simulatedVolume();
+                simulateFrequencies();
             } else {
-                volume = 0;
+                // Decay to zero when nothing is playing
+                audio.bass *= 0.95; audio.mid *= 0.95; audio.high *= 0.95;
+                audio.volume *= 0.95; audio.peak *= 0.95; audio.energy *= 0.98;
             }
 
-            // Slow breathing rhythm: oscillates 0.85–1.15 over ~4 seconds
-            const breathe = 1.0 + Math.sin(performance.now() / 1000 * Math.PI * 0.5) * 0.15;
-            volume *= breathe;
-
-            flowOffset += 0.004 + volume * 0.03;
+            // Flow speed driven by audio energy
+            flowOffset += 0.003 + audio.volume * 0.04 + audio.peak * 0.02;
 
             const preset = getCurrentPreset();
             const layers = preset.layers || [];
@@ -861,7 +921,7 @@
             for (const layer of layers) {
                 const fn = effects[layer.effect];
                 if (fn) {
-                    fn(ctx, width, height, volume, flowOffset, layer.params || {});
+                    fn(ctx, width, height, audio, flowOffset, layer.params || {});
                 }
             }
         }
