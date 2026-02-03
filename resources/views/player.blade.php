@@ -870,6 +870,39 @@
             vertical-align: super;
         }
 
+        /* ── Sync controls ────────────────────────────────────────── */
+        .sync-controls {
+            position: absolute;
+            bottom: 2%;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            opacity: 0.4;
+            transition: opacity 0.3s;
+            z-index: 20;
+        }
+        .sync-controls:hover { opacity: 1; }
+        .sync-btn {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: var(--text);
+            font-family: "Inter", sans-serif;
+            font-size: 0.75rem;
+            padding: 4px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .sync-btn:hover { background: rgba(255,255,255,0.2); }
+        .sync-label {
+            font-family: "Inter", sans-serif;
+            font-size: 0.7rem;
+            color: var(--muted);
+            min-width: 60px;
+            text-align: center;
+        }
+
         .stage:fullscreen #subtitle-overlay,
         .stage:-webkit-full-screen #subtitle-overlay {
             bottom: 10%;
@@ -943,6 +976,11 @@
             <canvas id="visuals"></canvas>
             <div id="surah-display"></div>
             <div id="subtitle-overlay"></div>
+            <div id="sync-controls" class="sync-controls" hidden>
+                <button id="sync-slower" class="sync-btn" title="Delay text (reciter is ahead)">−5s</button>
+                <span id="sync-label" class="sync-label">Sync: 0s</span>
+                <button id="sync-faster" class="sync-btn" title="Advance text (reciter is behind)">+5s</button>
+            </div>
             <div class="player">
                 <iframe id="yt-player" title="YouTube Quran Player" allow="autoplay; fullscreen" allowfullscreen hidden></iframe>
                 <audio id="audio-player" controls hidden></audio>
@@ -1929,8 +1967,11 @@
 
         // ── Subtitle Sync Engine ─────────────────────────────────────────
         const subtitleOverlay = document.getElementById('subtitle-overlay');
+        const syncControls = document.getElementById('sync-controls');
+        const syncLabel = document.getElementById('sync-label');
         let subtitleData = null;
         let currentSegmentId = -1;
+        let subtitleOffset = 0; // seconds to shift subtitle timing (positive = delay text)
         let pendingSurahLoad = null;
         let surahListCache = null;
 
@@ -2074,6 +2115,10 @@
                 if (ayahs.length === 0) return;
 
                 subtitleData = buildTimedSegments(ayahs, videoDuration, totalTimingDuration);
+                // Show sync controls so user can adjust timing offset
+                subtitleOffset = 0;
+                syncLabel.textContent = 'Sync: 0s';
+                syncControls.hidden = false;
             } catch (e) {
                 // API not available — silent fail
             }
@@ -2086,60 +2131,65 @@
         function buildTimedSegments(ayahs, videoDuration, totalTimingDuration) {
             const hasQulTiming = ayahs.some(a => a.timing && a.timing.start !== undefined);
 
-            if (hasQulTiming && totalTimingDuration > 0) {
-                return buildTimedSegmentsFromReference(ayahs, videoDuration, totalTimingDuration);
+            if (hasQulTiming) {
+                return buildTimedSegmentsFromReference(ayahs, videoDuration);
             }
             return buildTimedSegmentsFromCharCount(ayahs, videoDuration);
         }
 
         /**
-         * QUL reference timing: scale actual recitation timestamps to video duration.
-         * Uses real timestamps from a reference reciter (Mishary Rashid al-Afasy)
-         * and scales them proportionally to match the video length.
+         * QUL reference timing: distribute video duration proportionally using
+         * QUL ayah durations as weights. This is adaptive across different reciters
+         * because it uses relative proportions (how much of the total time each ayah
+         * takes) rather than absolute timestamps from one specific recording.
          */
-        function buildTimedSegmentsFromReference(ayahs, videoDuration, totalTimingDuration) {
-            // For partial surah (ayah range), use range duration instead of full surah
-            const firstAyahStart = (ayahs[0].timing && ayahs[0].timing.start !== undefined)
-                ? ayahs[0].timing.start : 0;
-            const lastAyah = ayahs[ayahs.length - 1];
-            const lastAyahEnd = (lastAyah.timing && lastAyah.timing.end !== undefined)
-                ? lastAyah.timing.end : totalTimingDuration;
-            const rangeDuration = lastAyahEnd - firstAyahStart;
-
-            // Scale factor: video duration / QUL range duration
-            const scaleFactor = rangeDuration > 0 ? videoDuration / rangeDuration : 1;
+        function buildTimedSegmentsFromReference(ayahs, videoDuration) {
+            // Compute each ayah's duration from QUL data
+            const ayahDurations = ayahs.map(a => {
+                const t = a.timing;
+                return (t && t.end !== undefined && t.start !== undefined)
+                    ? Math.max(0, t.end - t.start)
+                    : 0;
+            });
+            const totalQulDuration = ayahDurations.reduce((s, d) => s + d, 0);
+            if (totalQulDuration <= 0) return buildTimedSegmentsFromCharCount(ayahs, videoDuration);
 
             const segments = [];
+            let currentTime = 0;
 
             for (let i = 0; i < ayahs.length; i++) {
                 const ayah = ayahs[i];
                 const t = ayah.timing;
 
-                // Scale QUL timestamps to video duration
-                const ayahStart = t ? (t.start - firstAyahStart) * scaleFactor : 0;
-                const ayahEnd = t ? (t.end - firstAyahStart) * scaleFactor : videoDuration;
+                // Proportional share of video duration based on QUL ayah duration
+                const ayahDuration = (ayahDurations[i] / totalQulDuration) * videoDuration;
+                const ayahStart = currentTime;
+                const ayahEnd = currentTime + ayahDuration;
 
                 const words = [];
                 if (ayah.words && ayah.words.length > 0) {
                     const wordTimings = (t && t.words) ? t.words : [];
 
+                    // Compute word proportions within this ayah from QUL word durations
+                    const wordDurations = [];
                     for (let w = 0; w < ayah.words.length; w++) {
-                        let wStart, wEnd;
                         if (w < wordTimings.length && wordTimings[w]) {
-                            // Use actual QUL word timestamps, scaled
-                            wStart = (wordTimings[w].start - firstAyahStart) * scaleFactor;
-                            wEnd = (wordTimings[w].end - firstAyahStart) * scaleFactor;
+                            wordDurations.push(Math.max(0, wordTimings[w].end - wordTimings[w].start));
                         } else {
-                            // Fallback: distribute evenly within ayah
-                            const ayahDuration = ayahEnd - ayahStart;
-                            wStart = ayahStart + (w / ayah.words.length) * ayahDuration;
-                            wEnd = ayahStart + ((w + 1) / ayah.words.length) * ayahDuration;
+                            wordDurations.push(1); // equal fallback
                         }
+                    }
+                    const wordDurTotal = wordDurations.reduce((s, d) => s + d, 0) || 1;
+
+                    let wordTime = ayahStart;
+                    for (let w = 0; w < ayah.words.length; w++) {
+                        const wDuration = (wordDurations[w] / wordDurTotal) * ayahDuration;
                         words.push({
                             text: ayah.words[w],
-                            start: wStart,
-                            end: wEnd,
+                            start: wordTime,
+                            end: wordTime + wDuration,
                         });
+                        wordTime += wDuration;
                     }
                 }
 
@@ -2151,6 +2201,8 @@
                     words: words,
                     ayahNumber: ayah.numberInSurah,
                 });
+
+                currentTime = ayahEnd;
             }
 
             return { language: 'ar', segments: segments };
@@ -2287,8 +2339,18 @@
         (function subtitleLoop() {
             requestAnimationFrame(subtitleLoop);
             const t = getPlaybackTime();
-            if (t >= 0) updateSubtitles(t);
+            if (t >= 0) updateSubtitles(t - subtitleOffset);
         })();
+
+        // Sync controls: +/- buttons to adjust subtitle offset
+        document.getElementById('sync-slower').addEventListener('click', () => {
+            subtitleOffset += 5;
+            syncLabel.textContent = 'Sync: ' + (subtitleOffset > 0 ? '+' : '') + subtitleOffset + 's';
+        });
+        document.getElementById('sync-faster').addEventListener('click', () => {
+            subtitleOffset -= 5;
+            syncLabel.textContent = 'Sync: ' + (subtitleOffset > 0 ? '+' : '') + subtitleOffset + 's';
+        });
 
         // ── YouTube IFrame API ────────────────────────────────────────────
 
@@ -2594,6 +2656,8 @@
             subtitleData = null;
             currentSegmentId = -1;
             subtitleOverlay.textContent = '';
+            syncControls.hidden = true;
+            subtitleOffset = 0;
             hideDetectionBar();
 
             try {
