@@ -1,7 +1,11 @@
 <?php
 
+use App\Models\FeedbackItem;
+use App\Models\User;
+use App\Services\QuranUrlInspector;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -66,3 +70,312 @@ Artisan::command('quran:ingest {url} {--format=mp3}', function () {
     $this->line('Public URL (requires storage:link): '.$publicUrl);
     return 0;
 })->purpose('Download YouTube audio to a local file for reactive visuals');
+
+// ── quran:validate ──────────────────────────────────────────────────────
+Artisan::command('quran:validate {url}', function () {
+    $url = trim($this->argument('url'));
+    $inspector = app(QuranUrlInspector::class);
+    $result = $inspector->inspect($url);
+
+    if (!($result['ok'] ?? false)) {
+        $this->error('Blocked: '.($result['reason'] ?? 'Unknown reason'));
+        return 1;
+    }
+
+    $this->table(
+        ['Field', 'Value'],
+        [
+            ['Type', $result['type'] ?? '-'],
+            ['Title', $result['title'] ?? '-'],
+            ['Author', $result['author'] ?? '-'],
+            ['Embed URL', $result['embed_url'] ?? '-'],
+            ['Audio URL', $result['audio_url'] ?? '-'],
+            ['Reactive', ($result['reactive'] ?? false) ? 'Yes' : 'No'],
+            ['Warning', $result['warning'] ?? 'None'],
+        ]
+    );
+
+    return 0;
+})->purpose('Validate a URL and show Quran content metadata');
+
+// ── quran:presets ───────────────────────────────────────────────────────
+Artisan::command('quran:presets', function () {
+    $presets = config('quran.presets', []);
+
+    if (empty($presets)) {
+        $this->warn('No presets configured.');
+        return 0;
+    }
+
+    $rows = [];
+    foreach ($presets as $preset) {
+        $effects = collect($preset['layers'] ?? [])
+            ->pluck('effect')
+            ->implode(', ');
+
+        $rows[] = [
+            $preset['id'],
+            $preset['name'],
+            $preset['vars']['--accent'] ?? '-',
+            $preset['vars']['--bg-1'] ?? '-',
+            $effects ?: '-',
+        ];
+    }
+
+    $this->table(['ID', 'Name', 'Accent', 'Background', 'Effects'], $rows);
+    return 0;
+})->purpose('List all visual presets with their colors and effects');
+
+// ── quran:stats ─────────────────────────────────────────────────────────
+Artisan::command('quran:stats', function () {
+    $statuses = [
+        FeedbackItem::STATUS_UNDER_REVIEW,
+        FeedbackItem::STATUS_PLANNED,
+        FeedbackItem::STATUS_IN_PROGRESS,
+        FeedbackItem::STATUS_DONE,
+    ];
+
+    $this->info('Feedback by status:');
+    $statusRows = [];
+    foreach ($statuses as $status) {
+        $statusRows[] = [
+            str_replace('_', ' ', ucfirst($status)),
+            FeedbackItem::where('status', $status)->count(),
+        ];
+    }
+    $this->table(['Status', 'Count'], $statusRows);
+
+    $this->newLine();
+    $this->info('Top 5 voted items:');
+    $top = FeedbackItem::withCount('votes')
+        ->orderByDesc('votes_count')
+        ->limit(5)
+        ->get();
+
+    if ($top->isEmpty()) {
+        $this->line('  No feedback items yet.');
+    } else {
+        $topRows = [];
+        foreach ($top as $item) {
+            $topRows[] = [$item->id, Str::limit($item->title, 50), $item->votes_count];
+        }
+        $this->table(['ID', 'Title', 'Votes'], $topRows);
+    }
+
+    $this->newLine();
+    $this->line('Total items: '.FeedbackItem::count());
+    $this->line('Total users: '.User::count());
+
+    return 0;
+})->purpose('Show feedback statistics and top voted items');
+
+// ── quran:check-reciters ────────────────────────────────────────────────
+Artisan::command('quran:check-reciters', function () {
+    $reciters = config('quran.reciters', []);
+
+    if (empty($reciters)) {
+        $this->warn('No reciters configured in config/quran.php.');
+        return 0;
+    }
+
+    $this->info('Checking '.count($reciters).' reciters against YouTube oEmbed...');
+    $rows = [];
+
+    foreach ($reciters as $reciter) {
+        $videoId = $reciter['videoId'] ?? '';
+        $url = "https://www.youtube.com/watch?v={$videoId}";
+        $status = 'FAIL';
+        $title = '-';
+
+        try {
+            $response = Http::timeout(5)->get('https://www.youtube.com/oembed', [
+                'url' => $url,
+                'format' => 'json',
+            ]);
+
+            if ($response->ok()) {
+                $status = 'OK';
+                $title = $response->json('title') ?? '-';
+            } else {
+                $status = 'HTTP '.$response->status();
+            }
+        } catch (\Throwable $e) {
+            $status = 'FAIL';
+        }
+
+        $rows[] = [
+            $reciter['name'],
+            $videoId,
+            $status,
+            Str::limit($title, 60),
+        ];
+    }
+
+    $this->table(['Reciter', 'Video ID', 'Status', 'Title'], $rows);
+    return 0;
+})->purpose('Check all curated reciters against YouTube oEmbed API');
+
+// ── quran:deploy ────────────────────────────────────────────────────────
+Artisan::command('quran:deploy', function () {
+    $this->info('Pushing to origin master...');
+    $push = Process::timeout(30)->run(['git', 'push', 'origin', 'master']);
+    if (!$push->successful()) {
+        $this->error('Git push failed.');
+        $this->line($push->errorOutput());
+        return 1;
+    }
+    $this->line($push->output());
+
+    $this->info('Waiting 10s for Forge auto-deploy...');
+    sleep(10);
+
+    $this->info('Running remote migration...');
+    $migrate = Process::timeout(30)->run([
+        'ssh', 'diecasthub',
+        'cd ~/quran-visuals.on-forge.com/current && php artisan migrate --force',
+    ]);
+    if (!$migrate->successful()) {
+        $this->warn('Remote migration may have failed:');
+        $this->line($migrate->errorOutput());
+    } else {
+        $this->line($migrate->output());
+    }
+
+    $this->info('Running health check...');
+    try {
+        $response = Http::timeout(10)->get('https://quran-visuals.on-forge.com/up');
+        if ($response->ok()) {
+            $this->info('Health check passed (HTTP '.$response->status().').');
+        } else {
+            $this->warn('Health check returned HTTP '.$response->status().'.');
+        }
+    } catch (\Throwable $e) {
+        $this->error('Health check failed: '.$e->getMessage());
+    }
+
+    return 0;
+})->purpose('Push to master, wait for Forge deploy, run migration, and health check');
+
+// ── quran:transcribe ────────────────────────────────────────────────────
+Artisan::command('quran:transcribe {url} {--model=base} {--language=ar} {--slug=}', function () {
+    $url = trim($this->argument('url'));
+    $model = $this->option('model') ?: 'base';
+    $language = $this->option('language') ?: 'ar';
+    $slug = $this->option('slug');
+    $ytDlp = config('quran.yt_dlp_binary', 'yt-dlp');
+    $python = config('quran.python_binary', '/opt/homebrew/bin/python3');
+    $scriptPath = base_path('scripts/whisper_transcribe.py');
+
+    // Pre-check: yt-dlp
+    $ytCheck = Process::timeout(5)->run([$ytDlp, '--version']);
+    if (!$ytCheck->successful()) {
+        $this->error('yt-dlp not found. Install it: brew install yt-dlp');
+        return 1;
+    }
+
+    // Pre-check: whisper
+    $whisperCheck = Process::timeout(10)->run([$python, '-c', 'import whisper']);
+    if (!$whisperCheck->successful()) {
+        $this->error('openai-whisper not found. Install it: pip3 install openai-whisper');
+        return 1;
+    }
+
+    // Pre-check: script exists
+    if (!file_exists($scriptPath)) {
+        $this->error('Whisper script not found at: '.$scriptPath);
+        return 1;
+    }
+
+    // Generate slug from video ID if not provided
+    if (!$slug) {
+        // Try to extract YouTube video ID
+        parse_str(parse_url($url, PHP_URL_QUERY) ?? '', $query);
+        $host = strtolower(parse_url($url, PHP_URL_HOST) ?? '');
+        if ($host === 'youtu.be') {
+            $slug = trim(parse_url($url, PHP_URL_PATH) ?? '', '/');
+        } else {
+            $slug = $query['v'] ?? '';
+        }
+        if (!$slug) {
+            $slug = Str::lower(Str::random(8));
+        }
+    }
+
+    $subtitleDir = storage_path('app/public/subtitles');
+    if (!is_dir($subtitleDir)) {
+        mkdir($subtitleDir, 0755, true);
+    }
+
+    $tmpDir = storage_path('app/tmp-transcribe');
+    if (!is_dir($tmpDir)) {
+        mkdir($tmpDir, 0755, true);
+    }
+
+    $wavPath = $tmpDir.'/'.$slug.'.wav';
+    $outputPath = $subtitleDir.'/'.$slug.'.json';
+
+    // Step 1: Download audio as WAV
+    $this->info('Downloading audio as WAV...');
+    $download = Process::timeout(300)->run([
+        $ytDlp,
+        '--extract-audio',
+        '--audio-format', 'wav',
+        '--audio-quality', '0',
+        '-o', $wavPath,
+        $url,
+    ]);
+
+    if (!$download->successful()) {
+        $this->error('Audio download failed.');
+        $this->line($download->errorOutput());
+        return 1;
+    }
+
+    // yt-dlp may add its own extension — find the actual file
+    if (!file_exists($wavPath)) {
+        $candidates = glob($tmpDir.'/'.$slug.'.*');
+        $wavPath = $candidates[0] ?? $wavPath;
+    }
+
+    if (!file_exists($wavPath)) {
+        $this->error('Downloaded file not found.');
+        return 1;
+    }
+
+    // Step 2: Run Whisper transcription
+    $this->info("Transcribing with Whisper (model: {$model}, language: {$language})...");
+    $transcribe = Process::timeout(600)->run([
+        $python,
+        $scriptPath,
+        '--audio', $wavPath,
+        '--output', $outputPath,
+        '--model', $model,
+        '--language', $language,
+    ]);
+
+    if (!$transcribe->successful()) {
+        $this->error('Transcription failed.');
+        $this->line($transcribe->errorOutput());
+        @unlink($wavPath);
+        return 1;
+    }
+
+    $this->line($transcribe->output());
+
+    // Step 3: Save metadata sidecar
+    $metaPath = $subtitleDir.'/'.$slug.'.meta.json';
+    file_put_contents($metaPath, json_encode([
+        'source_url' => $url,
+        'slug' => $slug,
+        'model' => $model,
+        'language' => $language,
+        'created_at' => now()->toDateTimeString(),
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+    // Step 4: Cleanup WAV
+    @unlink($wavPath);
+
+    $this->info('Done. Subtitle file: '.$outputPath);
+    $this->line('Public URL (requires storage:link): '.Storage::url('subtitles/'.$slug.'.json'));
+    return 0;
+})->purpose('Download audio and generate Whisper subtitles for a Quran recitation');

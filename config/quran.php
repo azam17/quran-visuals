@@ -127,4 +127,15 @@ return [
         ],
     ],
     'yt_dlp_binary' => 'yt-dlp',
+
+    'python_binary' => env('PYTHON_BINARY', '/opt/homebrew/bin/python3'),
+
+    'reciters' => [
+        ['name' => 'Mishary Rashid Alafasy', 'videoId' => 'tAM7I4RIxo4'],
+        ['name' => 'Abdul Rahman Al-Sudais', 'videoId' => '6DuFgmxuWzg'],
+        ['name' => 'Maher Al Muaiqly', 'videoId' => 'JFKhsCPdAN4'],
+        ['name' => 'Yasser Al Dosari', 'videoId' => 'xHMsS_B3FAo'],
+        ['name' => 'Hazza Al Balushi', 'videoId' => 'i0MsVNwj1-k'],
+        ['name' => 'Raad Al Kurdi', 'videoId' => 'HT08GpOj1Ik'],
+    ],
 ];

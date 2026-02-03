@@ -13,6 +13,7 @@ class PlayerController extends Controller
     {
         return response()->view('player', [
             'presets' => config('quran.presets'),
+            'reciters' => config('quran.reciters', []),
         ]);
     }
 
@@ -22,6 +23,31 @@ class PlayerController extends Controller
             'url' => ['required', 'string', 'max:2048'],
         ]);
 
-        return response()->json($inspector->inspect($data['url']));
+        $result = $inspector->inspect($data['url']);
+
+        // If valid YouTube URL, check for existing subtitle file
+        if (($result['ok'] ?? false) && ($result['type'] ?? '') === 'youtube') {
+            $videoId = $this->extractVideoId($data['url']);
+            if ($videoId && file_exists(storage_path("app/public/subtitles/{$videoId}.json"))) {
+                $result['subtitle_slug'] = $videoId;
+            }
+        }
+
+        return response()->json($result);
+    }
+
+    private function extractVideoId(string $url): ?string
+    {
+        $parsed = parse_url($url);
+        $host = strtolower($parsed['host'] ?? '');
+
+        if ($host === 'youtu.be') {
+            $path = trim($parsed['path'] ?? '', '/');
+            return $path !== '' ? $path : null;
+        }
+
+        parse_str($parsed['query'] ?? '', $query);
+
+        return $query['v'] ?? null;
     }
 }

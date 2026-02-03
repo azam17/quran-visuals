@@ -757,6 +757,46 @@
             color: var(--muted);
         }
 
+        /* ── Subtitle overlay ──────────────────────────────────────── */
+        #subtitle-overlay {
+            position: absolute;
+            bottom: 8%;
+            left: 0;
+            right: 0;
+            z-index: 50;
+            text-align: center;
+            direction: rtl;
+            pointer-events: none;
+            padding: 0 24px;
+        }
+
+        #subtitle-overlay .segment-text {
+            display: inline;
+            font-family: "Cinzel", serif;
+            font-size: clamp(1.2rem, 2vw + 0.6rem, 2.4rem);
+            line-height: 1.6;
+            color: var(--text);
+            text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8), 0 0 4px rgba(0, 0, 0, 0.6);
+        }
+
+        #subtitle-overlay .word {
+            display: inline-block;
+            padding: 0 3px;
+            transition: color 0.15s, text-shadow 0.15s;
+        }
+
+        #subtitle-overlay .word.active {
+            color: var(--accent);
+            text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 60%, transparent),
+                         0 2px 12px rgba(0, 0, 0, 0.8);
+        }
+
+        .stage:fullscreen #subtitle-overlay,
+        .stage:-webkit-full-screen #subtitle-overlay {
+            bottom: 10%;
+            font-size: clamp(1.6rem, 2.5vw + 0.8rem, 3.2rem);
+        }
+
         @media (max-width: 760px) {
             header {
                 grid-template-columns: 1fr;
@@ -769,6 +809,10 @@
 
             .reciters-grid {
                 grid-template-columns: repeat(2, 1fr);
+            }
+
+            #subtitle-overlay .segment-text {
+                font-size: clamp(0.9rem, 4vw, 1.6rem);
             }
         }
     </style>
@@ -817,6 +861,7 @@
         <section class="stage" id="stage">
             <canvas id="visuals"></canvas>
             <div id="surah-display"></div>
+            <div id="subtitle-overlay"></div>
             <div class="player">
                 <iframe id="yt-player" title="YouTube Quran Player" allow="autoplay; fullscreen" allowfullscreen hidden></iframe>
                 <audio id="audio-player" controls hidden></audio>
@@ -1087,14 +1132,7 @@
         });
 
         // ── Curated Reciters ──────────────────────────────────────────────
-        const curatedReciters = [
-            { name: 'Mishary Rashid Alafasy', videoId: 'tAM7I4RIxo4' },
-            { name: 'Abdul Rahman Al-Sudais', videoId: '6DuFgmxuWzg' },
-            { name: 'Maher Al Muaiqly', videoId: 'JFKhsCPdAN4' },
-            { name: 'Yasser Al Dosari', videoId: 'xHMsS_B3FAo' },
-            { name: 'Hazza Al Balushi', videoId: 'i0MsVNwj1-k' },
-            { name: 'Raad Al Kurdi', videoId: 'HT08GpOj1Ik' },
-        ];
+        const curatedReciters = @json($reciters);
 
         curatedReciters.forEach(reciter => {
             const card = document.createElement('button');
@@ -1786,6 +1824,110 @@
             }
         }
 
+        // ── Subtitle Sync Engine ─────────────────────────────────────────
+        const subtitleOverlay = document.getElementById('subtitle-overlay');
+        let subtitleData = null;
+        let currentSegmentId = -1;
+
+        async function loadSubtitles(slug) {
+            subtitleData = null;
+            currentSegmentId = -1;
+            subtitleOverlay.textContent = '';
+
+            if (!slug) return;
+
+            try {
+                const res = await fetch(`/storage/subtitles/${encodeURIComponent(slug)}.json`);
+                if (!res.ok) return;
+                subtitleData = await res.json();
+            } catch (e) {
+                // Subtitle file not available — silent fail
+            }
+        }
+
+        function renderSegment(seg) {
+            subtitleOverlay.textContent = '';
+            const span = document.createElement('span');
+            span.className = 'segment-text';
+
+            if (seg.words && seg.words.length > 0) {
+                seg.words.forEach((w, i) => {
+                    const wordEl = document.createElement('span');
+                    wordEl.className = 'word';
+                    wordEl.dataset.start = w.start;
+                    wordEl.dataset.end = w.end;
+                    wordEl.textContent = w.text;
+                    span.appendChild(wordEl);
+                    if (i < seg.words.length - 1) {
+                        span.appendChild(document.createTextNode(' '));
+                    }
+                });
+            } else {
+                span.textContent = seg.text;
+            }
+
+            subtitleOverlay.appendChild(span);
+        }
+
+        function updateSubtitles(currentTime) {
+            if (!subtitleData || !subtitleData.segments) {
+                if (subtitleOverlay.childNodes.length) subtitleOverlay.textContent = '';
+                return;
+            }
+
+            // Find the current segment
+            let seg = null;
+            for (const s of subtitleData.segments) {
+                if (currentTime >= s.start && currentTime <= s.end) {
+                    seg = s;
+                    break;
+                }
+            }
+
+            if (!seg) {
+                if (currentSegmentId !== -1) {
+                    subtitleOverlay.textContent = '';
+                    currentSegmentId = -1;
+                }
+                return;
+            }
+
+            // Render new segment if changed
+            if (seg.id !== currentSegmentId) {
+                currentSegmentId = seg.id;
+                renderSegment(seg);
+            }
+
+            // Highlight active word
+            const words = subtitleOverlay.querySelectorAll('.word');
+            words.forEach(el => {
+                const ws = parseFloat(el.dataset.start);
+                const we = parseFloat(el.dataset.end);
+                if (currentTime >= ws && currentTime <= we) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+        }
+
+        function getPlaybackTime() {
+            if (ytMode && ytApiPlayer && typeof ytApiPlayer.getCurrentTime === 'function') {
+                return ytApiPlayer.getCurrentTime();
+            }
+            if (!audioPlayer.paused) {
+                return audioPlayer.currentTime;
+            }
+            return -1;
+        }
+
+        // Subtitle update loop (separate rAF for frame-accurate sync)
+        (function subtitleLoop() {
+            requestAnimationFrame(subtitleLoop);
+            const t = getPlaybackTime();
+            if (t >= 0) updateSubtitles(t);
+        })();
+
         // ── YouTube IFrame API ────────────────────────────────────────────
 
         // Global callback required by the YouTube IFrame API
@@ -2072,6 +2214,11 @@
             ytMode = false;
             ytPlaying = false;
 
+            // Clear any active subtitles
+            subtitleData = null;
+            currentSegmentId = -1;
+            subtitleOverlay.textContent = '';
+
             try {
                 const response = await fetch('/api/validate', {
                     method: 'POST',
@@ -2118,6 +2265,11 @@
                     lastReactive = true;
                     // Show surah name from title or filename
                     showSurahName(data.title || url.split('/').pop());
+                }
+
+                // Load subtitles if available
+                if (data.subtitle_slug) {
+                    loadSubtitles(data.subtitle_slug);
                 }
 
                 // Try to enter cinema mode; may fail if user gesture expired
