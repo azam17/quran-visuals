@@ -66,10 +66,7 @@ return [
                 '--accent-2' => '#2d4a5a',
             ],
             'layers' => [
-                ['effect' => 'gradientGlow', 'params' => ['color' => '#5a8fa8']],
-                ['effect' => 'mirroredWave', 'params' => ['color' => '#5a8fa8', 'layerCount' => 3]],
-                ['effect' => 'horizonGlow', 'params' => ['color' => '#2d4a5a', 'yPosition' => 0.72]],
-                ['effect' => 'particles', 'params' => ['color' => '#7ab0c4', 'count' => 30, 'shape' => 'circle']],
+                ['effect' => 'mirroredWave', 'params' => ['color' => '#5a8fa8', 'layerCount' => 4]],
             ],
         ],
         [
@@ -83,10 +80,7 @@ return [
                 '--accent-2' => '#6b3d25',
             ],
             'layers' => [
-                ['effect' => 'gradientGlow', 'params' => ['color' => '#c4845f']],
-                ['effect' => 'mirroredBars', 'params' => ['color' => '#c4845f', 'count' => 48]],
-                ['effect' => 'waveLine', 'params' => ['color' => '#6b3d25', 'yPosition' => 0.3]],
-                ['effect' => 'particles', 'params' => ['color' => '#d49975', 'count' => 25, 'shape' => 'square']],
+                ['effect' => 'mirroredBars', 'params' => ['color' => '#c4845f', 'count' => 64]],
             ],
         ],
         [
@@ -100,10 +94,7 @@ return [
                 '--accent-2' => '#473d5a',
             ],
             'layers' => [
-                ['effect' => 'gradientGlow', 'params' => ['color' => '#8a7aa6']],
                 ['effect' => 'oscilloscope', 'params' => ['color' => '#8a7aa6', 'freqX' => 3, 'freqY' => 2]],
-                ['effect' => 'waveLine', 'params' => ['color' => '#473d5a', 'yPosition' => 0.8]],
-                ['effect' => 'starField', 'params' => ['color' => '#9a8cb8', 'count' => 50]],
             ],
         ],
         [
@@ -117,10 +108,7 @@ return [
                 '--accent-2' => '#3d5a6b',
             ],
             'layers' => [
-                ['effect' => 'gradientGlow', 'params' => ['color' => '#7a9db0']],
                 ['effect' => 'circularWave', 'params' => ['color' => '#7a9db0', 'rings' => 3]],
-                ['effect' => 'horizonGlow', 'params' => ['color' => '#3d5a6b', 'yPosition' => 0.6, 'rays' => 8]],
-                ['effect' => 'particles', 'params' => ['color' => '#90b0c4', 'count' => 30, 'shape' => 'circle']],
             ],
         ],
         [
@@ -134,10 +122,7 @@ return [
                 '--accent-2' => '#4d4d59',
             ],
             'layers' => [
-                ['effect' => 'gradientGlow', 'params' => ['color' => '#9a9aa6']],
-                ['effect' => 'horizonGlow', 'params' => ['color' => '#9a9aa6', 'yPosition' => 0.68, 'rays' => 12]],
-                ['effect' => 'mirroredWave', 'params' => ['color' => '#7a7a85', 'layerCount' => 2]],
-                ['effect' => 'oscilloscope', 'params' => ['color' => '#5a5a65', 'freqX' => 2, 'freqY' => 3, 'size' => 0.2]],
+                ['effect' => 'mirroredWave', 'params' => ['color' => '#9a9aa6', 'layerCount' => 3]],
             ],
         ],
     ],

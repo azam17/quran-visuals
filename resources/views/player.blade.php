@@ -670,46 +670,30 @@
         }
 
         function getLayersForHue(hue, color, darker) {
-            const base = { effect: 'gradientGlow', params: { color: color } };
             if ((hue >= 0 && hue < 30) || hue >= 330) {
-                // Red — Energetic
+                // Red — Bars
                 return [
-                    base,
-                    { effect: 'mirroredBars', params: { color: color, count: 48 } },
-                    { effect: 'circularWave', params: { color: darker, rings: 1 } },
-                    { effect: 'particles', params: { color: color, count: 40, shape: 'circle' } },
+                    { effect: 'mirroredBars', params: { color: color, count: 64 } },
                 ];
             } else if (hue >= 30 && hue < 70) {
-                // Orange — Warm
+                // Orange — Waves
                 return [
-                    base,
-                    { effect: 'mirroredWave', params: { color: color, layerCount: 3 } },
-                    { effect: 'horizonGlow', params: { color: darker, yPosition: 0.7 } },
-                    { effect: 'particles', params: { color: color, count: 30, shape: 'square' } },
+                    { effect: 'mirroredWave', params: { color: color, layerCount: 4 } },
                 ];
             } else if (hue >= 70 && hue < 170) {
-                // Green — Organic
+                // Green — Circular
                 return [
-                    base,
-                    { effect: 'horizonGlow', params: { color: color, yPosition: 0.65, rays: 8 } },
-                    { effect: 'mirroredWave', params: { color: darker, layerCount: 2 } },
-                    { effect: 'starField', params: { color: color, count: 50 } },
+                    { effect: 'circularWave', params: { color: color, rings: 3 } },
                 ];
             } else if (hue >= 170 && hue < 260) {
-                // Blue — Structured
+                // Blue — Waves
                 return [
-                    base,
-                    { effect: 'circularWave', params: { color: color, rings: 3 } },
-                    { effect: 'mirroredBars', params: { color: darker, count: 32 } },
-                    { effect: 'waveLine', params: { color: color, yPosition: 0.78 } },
+                    { effect: 'mirroredWave', params: { color: color, layerCount: 4 } },
                 ];
             } else {
-                // Purple (260-330) — Mystical
+                // Purple — Oscilloscope
                 return [
-                    base,
                     { effect: 'oscilloscope', params: { color: color, freqX: 3, freqY: 2 } },
-                    { effect: 'mirroredWave', params: { color: darker, layerCount: 2 } },
-                    { effect: 'starField', params: { color: color, count: 50 } },
                 ];
             }
         }
@@ -926,35 +910,22 @@
                 const color = params.color || '#ffffff';
                 const layerCount = params.layerCount || 3;
                 const yCenter = (params.yCenter || 0.5) * h;
-                const c = hexToRgb(color);
                 const activity = a.volume + a.peak * 0.5;
                 if (activity < 0.01) return;
                 ctx.save();
                 ctx.globalCompositeOperation = 'lighter';
                 for (let layer = 0; layer < layerCount; layer++) {
-                    const band = layer === 0 ? a.bass : layer === 1 ? a.mid : a.high;
-                    const amplitude = band * 55 + a.peak * 20 - layer * 6;
+                    const band = layer === 0 ? a.bass : layer === 1 ? a.mid : layer === 2 ? a.high : (a.bass + a.mid) * 0.5;
+                    const amplitude = band * 55 + a.peak * 20 - layer * 5;
                     if (amplitude < 0.5) continue;
-                    const freq = 0.006 + layer * 0.003 + a.high * 0.002;
-                    const speed = 1.2 + layer * 0.5;
-                    const alpha = band * 0.28 + a.peak * 0.08 - layer * 0.03;
+                    const freq = 0.005 + layer * 0.003 + a.high * 0.002;
+                    const speed = 1.0 + layer * 0.4;
+                    const alpha = band * 0.3 + a.peak * 0.1 - layer * 0.02;
                     if (alpha < 0.01) continue;
-                    // Thin glow behind the stroke
-                    ctx.shadowBlur = 8 + band * 15;
-                    ctx.shadowColor = rgba(color, alpha * 0.5);
+                    ctx.shadowBlur = 6 + band * 18;
+                    ctx.shadowColor = rgba(color, alpha * 0.6);
                     ctx.strokeStyle = rgba(color, alpha);
                     ctx.lineWidth = 0.6 + band * 1.2;
-                    // Top wave
-                    ctx.beginPath();
-                    for (let x = 0; x <= w; x += 4) {
-                        const wave = Math.sin(flowOffset * speed + x * freq) * amplitude
-                            + Math.sin(flowOffset * speed * 0.5 + x * freq * 2.3) * (a.high * 8);
-                        const py = yCenter - wave;
-                        if (x === 0) ctx.moveTo(x, py);
-                        else ctx.lineTo(x, py);
-                    }
-                    ctx.stroke();
-                    // Mirrored bottom wave
                     ctx.beginPath();
                     for (let x = 0; x <= w; x += 4) {
                         const wave = Math.sin(flowOffset * speed + x * freq) * amplitude
@@ -964,28 +935,6 @@
                         else ctx.lineTo(x, py);
                     }
                     ctx.stroke();
-                    // Very subtle fill between the two lines
-                    if (alpha > 0.05) {
-                        ctx.shadowBlur = 0;
-                        const fillAlpha = alpha * 0.06;
-                        ctx.fillStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${fillAlpha})`;
-                        ctx.beginPath();
-                        const pts = [];
-                        for (let x = 0; x <= w; x += 4) {
-                            const wave = Math.sin(flowOffset * speed + x * freq) * amplitude
-                                + Math.sin(flowOffset * speed * 0.5 + x * freq * 2.3) * (a.high * 8);
-                            pts.push({ x, y: wave });
-                        }
-                        for (let i = 0; i < pts.length; i++) {
-                            if (i === 0) ctx.moveTo(pts[i].x, yCenter - pts[i].y);
-                            else ctx.lineTo(pts[i].x, yCenter - pts[i].y);
-                        }
-                        for (let i = pts.length - 1; i >= 0; i--) {
-                            ctx.lineTo(pts[i].x, yCenter + pts[i].y);
-                        }
-                        ctx.closePath();
-                        ctx.fill();
-                    }
                 }
                 ctx.shadowBlur = 0;
                 ctx.restore();
