@@ -131,11 +131,11 @@ return [
     'python_binary' => env('PYTHON_BINARY', '/opt/homebrew/bin/python3'),
 
     'reciters' => [
-        ['name' => 'Mishary Rashid Alafasy', 'videoId' => 'tAM7I4RIxo4'],
-        ['name' => 'Abdul Rahman Al-Sudais', 'videoId' => '6DuFgmxuWzg'],
-        ['name' => 'Maher Al Muaiqly', 'videoId' => 'JFKhsCPdAN4'],
-        ['name' => 'Yasser Al Dosari', 'videoId' => 'xHMsS_B3FAo'],
-        ['name' => 'Hazza Al Balushi', 'videoId' => 'i0MsVNwj1-k'],
-        ['name' => 'Raad Al Kurdi', 'videoId' => 'HT08GpOj1Ik'],
+        ['name' => 'Mishary Rashid Alafasy', 'videoId' => 'X2YnP50cwNU'],
+        ['name' => 'Abdul Rahman Al-Sudais', 'videoId' => 'Mk1NaOjVSBs'],
+        ['name' => 'Maher Al Muaiqly', 'videoId' => 'd1yTK45g9EA'],
+        ['name' => 'Yasser Al Dosari', 'videoId' => '9-SYYnQzVIY'],
+        ['name' => 'Hazza Al Balushi', 'videoId' => 'UlK_aQK4dyY'],
+        ['name' => 'Raad Al Kurdi', 'videoId' => 'MlCXPjpTVZk'],
     ],
 ];
