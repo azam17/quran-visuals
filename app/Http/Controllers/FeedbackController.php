@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\NewFeedbackSubmitted;
 use App\Models\FeedbackItem;
 use App\Models\FeedbackVote;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
 
 class FeedbackController extends Controller
 {
@@ -60,7 +62,12 @@ class FeedbackController extends Controller
             'description' => ['required', 'string', 'max:2000'],
         ]);
 
-        $request->user()->feedbackItems()->create($validated);
+        $item = $request->user()->feedbackItems()->create($validated);
+
+        $adminEmail = config('quran.admin_email');
+        if ($adminEmail) {
+            Mail::to($adminEmail)->send(new NewFeedbackSubmitted($item));
+        }
 
         return redirect('/feedback')->with('success', 'Your request has been submitted!');
     }
