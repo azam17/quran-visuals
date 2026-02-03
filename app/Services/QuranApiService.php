@@ -36,15 +36,26 @@ class QuranApiService
      */
     public function getSurahList(): array
     {
-        return Cache::remember('quran_surah_list', now()->addDays(self::CACHE_DAYS), function () {
+        $cached = Cache::get('quran_surah_list');
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        try {
             $response = Http::timeout(10)->get(self::API_BASE . '/surah');
 
-            if (!$response->ok()) {
-                return [];
+            if ($response->ok()) {
+                $data = $response->json('data') ?? [];
+                if (!empty($data)) {
+                    Cache::put('quran_surah_list', $data, now()->addDays(self::CACHE_DAYS));
+                    return $data;
+                }
             }
+        } catch (\Throwable $e) {
+            // Network error — return empty without caching
+        }
 
-            return $response->json('data') ?? [];
-        });
+        return [];
     }
 
     /**
@@ -56,15 +67,27 @@ class QuranApiService
             return null;
         }
 
-        return Cache::remember("quran_surah_{$surahNumber}", now()->addDays(self::CACHE_DAYS), function () use ($surahNumber) {
+        $cacheKey = "quran_surah_{$surahNumber}";
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        try {
             $response = Http::timeout(10)->get(self::API_BASE . "/surah/{$surahNumber}/quran-uthmani");
 
-            if (!$response->ok()) {
-                return null;
+            if ($response->ok()) {
+                $data = $response->json('data');
+                if ($data) {
+                    Cache::put($cacheKey, $data, now()->addDays(self::CACHE_DAYS));
+                    return $data;
+                }
             }
+        } catch (\Throwable $e) {
+            // Network error — return null without caching
+        }
 
-            return $response->json('data');
-        });
+        return null;
     }
 
     /**
