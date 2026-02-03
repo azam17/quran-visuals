@@ -1315,9 +1315,13 @@
         }
 
         function hideOverlays() {
+            const isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
             meta.style.opacity = '0';
             shareBtn.classList.remove('visible');
-            playpauseBtn.classList.remove('visible');
+            // Only auto-hide play/pause in fullscreen; keep visible when windowed
+            if (isFullscreen) {
+                playpauseBtn.classList.remove('visible');
+            }
         }
 
         function startOverlayHideTimer() {
@@ -1330,7 +1334,8 @@
             const isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
             exitCinemaBtn.hidden = !isFullscreen;
             shareBtn.hidden = !(isFullscreen && mediaActive);
-            playpauseBtn.hidden = !(isFullscreen && mediaActive);
+            // Show play/pause whenever media is active (fullscreen or not)
+            playpauseBtn.hidden = !mediaActive;
             fullscreenBtn.hidden = true;
             resizeCanvas();
 
@@ -1339,6 +1344,8 @@
             } else {
                 clearTimeout(overlayHideTimer);
                 showOverlays();
+                // Keep play/pause always visible when not fullscreen
+                playpauseBtn.classList.add('visible');
             }
         }
 
@@ -1465,6 +1472,8 @@
                 setMeta(data.title || 'Quran Recitation', data.author || 'Verified input');
 
                 mediaActive = true;
+                playpauseBtn.hidden = false;
+                playpauseBtn.classList.add('visible');
 
                 if (data.type === 'youtube') {
                     ytPlayer.src = data.embed_url;
