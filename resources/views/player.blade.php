@@ -5,6 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Quran Visuals</title>
+    <meta property="og:title" content="Quran Visuals — Cinematic Quran Recitation Player">
+    <meta property="og:description" content="Experience Quran recitations with beautiful audio-reactive visualizations">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ url('/') }}">
+    <meta property="og:image" content="{{ asset('og-image.png') }}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Quran Visuals">
+    <meta name="twitter:description" content="Cinematic audio-reactive Quran recitation player">
+    <meta name="twitter:image" content="{{ asset('og-image.png') }}">
     <script src="https://www.youtube.com/iframe_api"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Inter:wght@400;600&display=swap');
@@ -487,6 +496,310 @@
             background: #000;
         }
 
+        /* ── Toast notification ──────────────────────────────────────── */
+        .toast {
+            position: fixed;
+            bottom: 32px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            padding: 10px 22px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(20, 22, 28, 0.92);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            color: var(--text);
+            font-family: "Inter", sans-serif;
+            font-size: 0.88rem;
+            z-index: 9999;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s, transform 0.3s;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* ── Control icon buttons (sleep, repeat, screenshot, share, shortcuts) ── */
+        .ctrl-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            width: 38px;
+            height: 38px;
+            padding: 0;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(8, 9, 12, 0.7);
+            color: var(--muted);
+            cursor: pointer;
+            transition: color 0.2s, border-color 0.2s, background 0.2s;
+        }
+
+        .ctrl-btn:hover {
+            color: var(--text);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .ctrl-btn.active {
+            color: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .ctrl-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+        }
+
+        .ctrl-btn .badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 4px;
+            border-radius: 9px;
+            background: var(--accent);
+            color: #fff;
+            font-size: 0.65rem;
+            font-family: "Inter", sans-serif;
+            font-weight: 600;
+            line-height: 18px;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        /* ── Sleep timer dropdown ───────────────────────────────────────── */
+        .sleep-dropdown {
+            position: absolute;
+            top: calc(100% + 6px);
+            right: 0;
+            min-width: 120px;
+            padding: 6px 0;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(14, 16, 22, 0.95);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            z-index: 200;
+            display: none;
+        }
+
+        .sleep-dropdown.open {
+            display: block;
+        }
+
+        .sleep-dropdown button {
+            display: block;
+            width: 100%;
+            padding: 8px 16px;
+            border: none;
+            background: none;
+            color: var(--muted);
+            font-family: "Inter", sans-serif;
+            font-size: 0.85rem;
+            text-align: left;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .sleep-dropdown button:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text);
+        }
+
+        .sleep-dropdown button.selected {
+            color: var(--accent);
+        }
+
+        /* ── Keyboard shortcuts modal ───────────────────────────────────── */
+        .shortcuts-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 10000;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            display: none;
+            place-items: center;
+        }
+
+        .shortcuts-overlay.open {
+            display: grid;
+        }
+
+        .shortcuts-modal {
+            width: min(440px, 90vw);
+            padding: 28px 32px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(14, 16, 22, 0.97);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .shortcuts-modal h2 {
+            font-family: "Cinzel", serif;
+            font-size: 1.15rem;
+            margin-bottom: 18px;
+            letter-spacing: 0.04em;
+        }
+
+        .shortcuts-modal .shortcut-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 7px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-family: "Inter", sans-serif;
+            font-size: 0.88rem;
+        }
+
+        .shortcuts-modal .shortcut-row:last-child {
+            border-bottom: none;
+        }
+
+        .shortcuts-modal .shortcut-row .action {
+            color: var(--muted);
+        }
+
+        .shortcuts-modal kbd {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 5px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.06);
+            font-family: "Inter", sans-serif;
+            font-size: 0.8rem;
+            color: var(--text);
+            min-width: 28px;
+            text-align: center;
+        }
+
+        /* ── Surah name display ─────────────────────────────────────────── */
+        #surah-display {
+            position: absolute;
+            top: 18%;
+            left: 0;
+            right: 0;
+            z-index: 50;
+            text-align: center;
+            font-family: "Cinzel", serif;
+            font-size: clamp(1.6rem, 2.5vw + 1rem, 3rem);
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            color: rgba(255, 255, 255, 0.7);
+            text-shadow: 0 2px 20px rgba(0, 0, 0, 0.6);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.8s ease;
+        }
+
+        #surah-display.visible {
+            opacity: 1;
+        }
+
+        .stage:fullscreen #surah-display,
+        .stage:-webkit-full-screen #surah-display {
+            font-size: clamp(2rem, 3vw + 1.2rem, 4rem);
+            top: 12%;
+        }
+
+        /* ── Screenshot flash ───────────────────────────────────────────── */
+        .screenshot-flash {
+            position: absolute;
+            inset: 0;
+            background: #fff;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 500;
+            animation: flashAnim 0.4s ease-out forwards;
+        }
+
+        @keyframes flashAnim {
+            0% { opacity: 0.35; }
+            100% { opacity: 0; }
+        }
+
+        /* ── Curated reciters grid ──────────────────────────────────────── */
+        .reciters-panel {
+            position: absolute;
+            inset: 0;
+            z-index: 20;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+        }
+
+        .reciters-panel[hidden] {
+            display: none;
+        }
+
+        .reciters-inner {
+            text-align: center;
+            max-width: 600px;
+        }
+
+        .reciters-inner h2 {
+            font-family: "Cinzel", serif;
+            font-size: 1.2rem;
+            letter-spacing: 0.05em;
+            margin-bottom: 6px;
+        }
+
+        .reciters-inner p {
+            font-family: "Inter", sans-serif;
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-bottom: 20px;
+        }
+
+        .reciters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+        }
+
+        .reciter-card {
+            padding: 14px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(8, 9, 12, 0.5);
+            color: var(--text);
+            font-family: "Cinzel", serif;
+            font-size: 0.82rem;
+            letter-spacing: 0.03em;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s, transform 0.15s;
+        }
+
+        .reciter-card:hover {
+            border-color: var(--accent);
+            background: rgba(90, 143, 168, 0.08);
+            transform: translateY(-2px);
+        }
+
+        /* ── Footer shortcuts hint ──────────────────────────────────────── */
+        .shortcuts-hint {
+            position: fixed;
+            bottom: 8px;
+            right: 12px;
+            z-index: 100;
+            font-family: "Inter", sans-serif;
+            font-size: 0.72rem;
+            color: rgba(178, 176, 189, 0.4);
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .shortcuts-hint:hover {
+            color: var(--muted);
+        }
+
         @media (max-width: 760px) {
             header {
                 grid-template-columns: 1fr;
@@ -495,6 +808,10 @@
             .controls input {
                 width: 100%;
                 min-width: unset;
+            }
+
+            .reciters-grid {
+                grid-template-columns: repeat(2, 1fr);
             }
         }
     </style>
@@ -516,17 +833,60 @@
                 </select>
                 <input type="color" id="color-picker" value="{{ $presets[0]['vars']['--accent'] }}" aria-label="Accent color" title="Accent color">
                 <button type="submit">Enter Cinema</button>
+
+                {{-- Sleep Timer --}}
+                <button type="button" class="ctrl-btn" id="sleep-btn" title="Sleep Timer">
+                    <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></svg>
+                    <span class="badge" id="sleep-badge" style="display:none;"></span>
+                    <div class="sleep-dropdown" id="sleep-dropdown">
+                        <button type="button" data-minutes="15">15 minutes</button>
+                        <button type="button" data-minutes="30">30 minutes</button>
+                        <button type="button" data-minutes="45">45 minutes</button>
+                        <button type="button" data-minutes="60">1 hour</button>
+                        <button type="button" data-minutes="120">2 hours</button>
+                        <button type="button" data-minutes="0">Off</button>
+                    </div>
+                </button>
+
+                {{-- Repeat/Loop --}}
+                <button type="button" class="ctrl-btn" id="repeat-btn" title="Repeat: Off">
+                    <svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+                    <span class="badge" id="repeat-badge" style="display:none;">1</span>
+                </button>
+
+                {{-- Screenshot --}}
+                <button type="button" class="ctrl-btn" id="screenshot-btn" title="Capture Screenshot">
+                    <svg viewBox="0 0 24 24"><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.65 0-3 1.35-3 3s1.35 3 3 3 3-1.35 3-3-1.35-3-3-3z"/></svg>
+                </button>
+
+                {{-- Share --}}
+                <button type="button" class="ctrl-btn" id="share-link-btn" title="Share Link">
+                    <svg viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/></svg>
+                </button>
+
+                {{-- Keyboard Shortcuts --}}
+                <button type="button" class="ctrl-btn" id="shortcuts-btn" title="Keyboard Shortcuts (?)">
+                    <svg viewBox="0 0 24 24"><path d="M20 5H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/></svg>
+                </button>
             </form>
         </header>
 
         <section class="stage" id="stage">
             <canvas id="visuals"></canvas>
+            <div id="surah-display"></div>
             <div class="player">
                 <iframe id="yt-player" title="YouTube Quran Player" allow="autoplay; fullscreen" allowfullscreen hidden></iframe>
                 <audio id="audio-player" controls hidden></audio>
             </div>
             <div class="message" id="message">
                 Paste a Quran YouTube link or a direct audio file to begin.
+            </div>
+            <div class="reciters-panel" id="reciters-panel">
+                <div class="reciters-inner">
+                    <h2>Discover Reciters</h2>
+                    <p>Select a reciter to start listening instantly</p>
+                    <div class="reciters-grid" id="reciters-grid"></div>
+                </div>
             </div>
             <div class="meta" id="meta" hidden>
                 <div><strong id="meta-title">Ready</strong></div>
@@ -548,6 +908,29 @@
             </select>
         </section>
     </div>
+
+    {{-- Keyboard shortcuts modal --}}
+    <div class="shortcuts-overlay" id="shortcuts-overlay">
+        <div class="shortcuts-modal">
+            <h2>Keyboard Shortcuts</h2>
+            <div class="shortcut-row"><span class="action">Play / Pause</span> <kbd>Space</kbd></div>
+            <div class="shortcut-row"><span class="action">Mute / Unmute</span> <kbd>M</kbd></div>
+            <div class="shortcut-row"><span class="action">Toggle Fullscreen</span> <kbd>F</kbd></div>
+            <div class="shortcut-row"><span class="action">Seek backward 10s</span> <kbd>&larr;</kbd></div>
+            <div class="shortcut-row"><span class="action">Seek forward 10s</span> <kbd>&rarr;</kbd></div>
+            <div class="shortcut-row"><span class="action">Volume up</span> <kbd>&uarr;</kbd></div>
+            <div class="shortcut-row"><span class="action">Volume down</span> <kbd>&darr;</kbd></div>
+            <div class="shortcut-row"><span class="action">Cycle loop mode</span> <kbd>L</kbd></div>
+            <div class="shortcut-row"><span class="action">Show / hide this help</span> <kbd>?</kbd></div>
+            <div class="shortcut-row"><span class="action">Close / exit fullscreen</span> <kbd>Esc</kbd></div>
+        </div>
+    </div>
+
+    {{-- Shortcuts hint --}}
+    <span class="shortcuts-hint" id="shortcuts-hint">Press ? for shortcuts</span>
+
+    {{-- Toast container --}}
+    <div class="toast" id="toast"></div>
 
     <script>
         const presets = @json($presets);
@@ -575,6 +958,284 @@
         const playIcon = document.getElementById('play-icon');
         const pauseIcon = document.getElementById('pause-icon');
         let isPlaying = false;
+
+        // ── New feature elements ──────────────────────────────────────────
+        const toast = document.getElementById('toast');
+        const sleepBtn = document.getElementById('sleep-btn');
+        const sleepDropdown = document.getElementById('sleep-dropdown');
+        const sleepBadge = document.getElementById('sleep-badge');
+        const repeatBtn = document.getElementById('repeat-btn');
+        const repeatBadge = document.getElementById('repeat-badge');
+        const screenshotBtn = document.getElementById('screenshot-btn');
+        const shareLinkBtn = document.getElementById('share-link-btn');
+        const shortcutsBtn = document.getElementById('shortcuts-btn');
+        const shortcutsOverlay = document.getElementById('shortcuts-overlay');
+        const shortcutsHint = document.getElementById('shortcuts-hint');
+        const surahDisplay = document.getElementById('surah-display');
+        const recitersPanel = document.getElementById('reciters-panel');
+        const recitersGrid = document.getElementById('reciters-grid');
+
+        // ── Toast utility ─────────────────────────────────────────────────
+        let toastTimer = null;
+        function showToast(msg) {
+            toast.textContent = msg;
+            toast.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
+        }
+
+        // ── Sleep Timer ───────────────────────────────────────────────────
+        let sleepTimeout = null;
+        let sleepInterval = null;
+        let sleepEndTime = 0;
+
+        function clearSleepTimer() {
+            clearTimeout(sleepTimeout);
+            clearInterval(sleepInterval);
+            sleepTimeout = null;
+            sleepInterval = null;
+            sleepEndTime = 0;
+            sleepBadge.style.display = 'none';
+            sleepBtn.classList.remove('active');
+            sleepDropdown.querySelectorAll('button').forEach(b => b.classList.remove('selected'));
+        }
+
+        function startSleepTimer(minutes) {
+            clearSleepTimer();
+            if (minutes <= 0) return;
+            sleepEndTime = Date.now() + minutes * 60 * 1000;
+            sleepBtn.classList.add('active');
+
+            // Mark selected option
+            sleepDropdown.querySelectorAll('button').forEach(b => {
+                if (parseInt(b.dataset.minutes) === minutes) b.classList.add('selected');
+            });
+
+            // Update badge every 30s
+            function updateBadge() {
+                const remaining = Math.max(0, sleepEndTime - Date.now());
+                const mins = Math.ceil(remaining / 60000);
+                if (mins > 60) {
+                    const hrs = Math.floor(mins / 60);
+                    sleepBadge.textContent = hrs + 'h';
+                } else {
+                    sleepBadge.textContent = mins + 'm';
+                }
+                sleepBadge.style.display = '';
+            }
+            updateBadge();
+            sleepInterval = setInterval(updateBadge, 30000);
+
+            sleepTimeout = setTimeout(() => {
+                // Pause playback
+                if (ytMode && ytApiPlayer) {
+                    try { ytApiPlayer.pauseVideo(); } catch (e) {}
+                } else if (!audioPlayer.hidden && !audioPlayer.paused) {
+                    audioPlayer.pause();
+                }
+                clearSleepTimer();
+                showToast('Sleep timer ended');
+            }, minutes * 60 * 1000);
+        }
+
+        sleepBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sleepDropdown.classList.toggle('open');
+        });
+
+        sleepDropdown.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-minutes]');
+            if (!btn) return;
+            e.stopPropagation();
+            startSleepTimer(parseInt(btn.dataset.minutes));
+            sleepDropdown.classList.remove('open');
+        });
+
+        document.addEventListener('click', () => sleepDropdown.classList.remove('open'));
+
+        // ── Repeat / Loop Mode ────────────────────────────────────────────
+        let repeatMode = 'off'; // 'off' | 'one' | 'all'
+
+        function cycleRepeatMode() {
+            if (repeatMode === 'off') repeatMode = 'one';
+            else if (repeatMode === 'one') repeatMode = 'all';
+            else repeatMode = 'off';
+            updateRepeatUI();
+        }
+
+        function updateRepeatUI() {
+            if (repeatMode === 'off') {
+                repeatBtn.classList.remove('active');
+                repeatBadge.style.display = 'none';
+                repeatBtn.title = 'Repeat: Off';
+            } else if (repeatMode === 'one') {
+                repeatBtn.classList.add('active');
+                repeatBadge.style.display = '';
+                repeatBtn.title = 'Repeat: One';
+            } else {
+                repeatBtn.classList.add('active');
+                repeatBadge.style.display = 'none';
+                repeatBtn.title = 'Repeat: All';
+            }
+        }
+
+        repeatBtn.addEventListener('click', cycleRepeatMode);
+
+        // Handle audio ended for repeat
+        audioPlayer.addEventListener('ended', () => {
+            if (repeatMode === 'one' || repeatMode === 'all') {
+                audioPlayer.currentTime = 0;
+                audioPlayer.play().catch(() => {});
+            }
+        });
+
+        // ── Surah Name Display ────────────────────────────────────────────
+        let surahHideTimer = null;
+
+        function extractSurahName(rawTitle) {
+            if (!rawTitle) return '';
+            let name = rawTitle;
+            // Strip file extensions
+            name = name.replace(/\.(mp3|wav|ogg|m4a|aac|webm|opus)$/i, '');
+            // Underscores/hyphens to spaces
+            name = name.replace(/[_-]/g, ' ');
+            // Strip common prefixes
+            name = name.replace(/^(surah|surat|سورة)\s*/i, '');
+            // Strip reciter patterns like "by Sheikh X", "- Reciter Name", etc.
+            name = name.replace(/\s*[-–—|]\s*(by\s+)?(sheikh|imam|qari|hafiz)\s+.*/i, '');
+            name = name.replace(/\s+by\s+(sheikh|imam|qari|hafiz)\s+.*/i, '');
+            // Strip common YouTube suffixes
+            name = name.replace(/\s*[-–—|]\s*(full|complete|hd|4k|audio|video|recitation|tilawat|tilawah).*$/i, '');
+            // Clean up extra whitespace
+            name = name.replace(/\s+/g, ' ').trim();
+            return name;
+        }
+
+        function showSurahName(title) {
+            const name = extractSurahName(title);
+            if (!name) return;
+            surahDisplay.textContent = name;
+            surahDisplay.classList.add('visible');
+            clearTimeout(surahHideTimer);
+            surahHideTimer = setTimeout(() => surahDisplay.classList.remove('visible'), 5000);
+        }
+
+        stage.addEventListener('mouseenter', () => {
+            if (surahDisplay.textContent && mediaActive) {
+                surahDisplay.classList.add('visible');
+                clearTimeout(surahHideTimer);
+            }
+        });
+
+        stage.addEventListener('mouseleave', () => {
+            if (surahDisplay.textContent) {
+                surahHideTimer = setTimeout(() => surahDisplay.classList.remove('visible'), 2000);
+            }
+        });
+
+        // ── Screenshot Capture ────────────────────────────────────────────
+        function captureScreenshot() {
+            const w = canvas.width;
+            const h = canvas.height;
+            const ratio = window.devicePixelRatio || 1;
+
+            // Create offscreen canvas for compositing
+            const offscreen = document.createElement('canvas');
+            offscreen.width = w;
+            offscreen.height = h;
+            const offCtx = offscreen.getContext('2d');
+
+            // Draw main visualization
+            offCtx.drawImage(canvas, 0, 0);
+
+            // Draw surah name if visible
+            const surahText = surahDisplay.textContent;
+            if (surahText) {
+                const fontSize = Math.round(32 * ratio);
+                offCtx.font = `600 ${fontSize}px Cinzel, serif`;
+                offCtx.textAlign = 'center';
+                offCtx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                offCtx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+                offCtx.shadowBlur = 20 * ratio;
+                offCtx.fillText(surahText, w / 2, h * 0.18 + fontSize);
+                offCtx.shadowBlur = 0;
+            }
+
+            // Draw watermark
+            const wmSize = Math.round(12 * ratio);
+            offCtx.font = `${wmSize}px Inter, sans-serif`;
+            offCtx.textAlign = 'right';
+            offCtx.fillStyle = 'rgba(255, 255, 255, 0.10)';
+            offCtx.fillText('QuranVisuals.com', w - 14 * ratio, h - 12 * ratio);
+
+            // Flash effect
+            const flash = document.createElement('div');
+            flash.className = 'screenshot-flash';
+            stage.appendChild(flash);
+            flash.addEventListener('animationend', () => flash.remove());
+
+            // Download
+            offscreen.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `quran-visual-${Date.now()}.png`;
+                a.click();
+                URL.revokeObjectURL(url);
+                showToast('Screenshot saved');
+            }, 'image/png');
+        }
+
+        screenshotBtn.addEventListener('click', captureScreenshot);
+
+        // ── Share Link ────────────────────────────────────────────────────
+        async function shareLink() {
+            const url = window.location.href;
+            if (navigator.share) {
+                try {
+                    await navigator.share({ title: 'Quran Visuals', url });
+                } catch (e) { /* user cancelled */ }
+            } else {
+                await navigator.clipboard.writeText(url);
+                showToast('Link copied to clipboard');
+            }
+        }
+
+        shareLinkBtn.addEventListener('click', shareLink);
+
+        // ── Keyboard Shortcuts ────────────────────────────────────────────
+        function toggleShortcutsModal() {
+            shortcutsOverlay.classList.toggle('open');
+        }
+
+        shortcutsBtn.addEventListener('click', toggleShortcutsModal);
+        shortcutsHint.addEventListener('click', toggleShortcutsModal);
+
+        shortcutsOverlay.addEventListener('click', (e) => {
+            if (e.target === shortcutsOverlay) shortcutsOverlay.classList.remove('open');
+        });
+
+        // ── Curated Reciters ──────────────────────────────────────────────
+        const curatedReciters = [
+            { name: 'Mishary Rashid Alafasy', videoId: 'tAM7I4RIxo4' },
+            { name: 'Abdul Rahman Al-Sudais', videoId: '6DuFgmxuWzg' },
+            { name: 'Maher Al Muaiqly', videoId: 'JFKhsCPdAN4' },
+            { name: 'Yasser Al Dosari', videoId: 'xHMsS_B3FAo' },
+            { name: 'Hazza Al Balushi', videoId: 'i0MsVNwj1-k' },
+            { name: 'Raad Al Kurdi', videoId: 'HT08GpOj1Ik' },
+        ];
+
+        curatedReciters.forEach(reciter => {
+            const card = document.createElement('button');
+            card.className = 'reciter-card';
+            card.textContent = reciter.name;
+            card.addEventListener('click', () => {
+                const url = `https://www.youtube.com/watch?v=${reciter.videoId}`;
+                input.value = url;
+                form.dispatchEvent(new Event('submit', { cancelable: true }));
+            });
+            recitersGrid.appendChild(card);
+        });
 
         function syncPlayPauseIcon(playing) {
             isPlaying = playing;
@@ -1270,13 +1931,26 @@
                         } else if (state === YT.PlayerState.BUFFERING) {
                             // Keep simulation running during buffering
                             ytPlaying = true;
-                        } else if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.ENDED) {
+                        } else if (state === YT.PlayerState.ENDED) {
+                            // Handle repeat mode for YouTube
+                            if (repeatMode === 'one' || repeatMode === 'all') {
+                                ytApiPlayer.seekTo(0);
+                                ytApiPlayer.playVideo();
+                            } else {
+                                ytPlaying = false;
+                                syncPlayPauseIcon(false);
+                            }
+                        } else if (state === YT.PlayerState.PAUSED) {
                             ytPlaying = false;
                             syncPlayPauseIcon(false);
                         }
                     },
                     onReady: function() {
-                        // Don't set ytPlaying here — wait for PLAYING state
+                        // Show surah name from YT video title
+                        try {
+                            const data = ytApiPlayer.getVideoData();
+                            if (data && data.title) showSurahName(data.title);
+                        } catch (e) {}
                     },
                 },
             });
@@ -1397,9 +2071,79 @@
         });
 
         document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space' && (document.fullscreenElement || document.webkitFullscreenElement)) {
-                e.preventDefault();
-                playpauseBtn.click();
+            // Ignore when typing in inputs
+            const tag = e.target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+            switch (e.code) {
+                case 'Space':
+                    e.preventDefault();
+                    playpauseBtn.click();
+                    break;
+                case 'KeyM':
+                    if (ytMode && ytApiPlayer) {
+                        if (ytApiPlayer.isMuted()) ytApiPlayer.unMute();
+                        else ytApiPlayer.mute();
+                    } else if (!audioPlayer.hidden) {
+                        audioPlayer.muted = !audioPlayer.muted;
+                    }
+                    showToast(((ytMode && ytApiPlayer && ytApiPlayer.isMuted()) || audioPlayer.muted) ? 'Muted' : 'Unmuted');
+                    break;
+                case 'KeyF':
+                    if (document.fullscreenElement || document.webkitFullscreenElement) {
+                        exitCinema();
+                    } else {
+                        enterCinema();
+                    }
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    if (ytMode && ytApiPlayer) {
+                        ytApiPlayer.seekTo(Math.max(0, ytApiPlayer.getCurrentTime() - 10), true);
+                    } else if (!audioPlayer.hidden) {
+                        audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - 10);
+                    }
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    if (ytMode && ytApiPlayer) {
+                        ytApiPlayer.seekTo(ytApiPlayer.getCurrentTime() + 10, true);
+                    } else if (!audioPlayer.hidden) {
+                        audioPlayer.currentTime = Math.min(audioPlayer.duration, audioPlayer.currentTime + 10);
+                    }
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    if (ytMode && ytApiPlayer) {
+                        ytApiPlayer.setVolume(Math.min(100, ytApiPlayer.getVolume() + 10));
+                    } else if (!audioPlayer.hidden) {
+                        audioPlayer.volume = Math.min(1, audioPlayer.volume + 0.1);
+                    }
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    if (ytMode && ytApiPlayer) {
+                        ytApiPlayer.setVolume(Math.max(0, ytApiPlayer.getVolume() - 10));
+                    } else if (!audioPlayer.hidden) {
+                        audioPlayer.volume = Math.max(0, audioPlayer.volume - 0.1);
+                    }
+                    break;
+                case 'KeyL':
+                    cycleRepeatMode();
+                    showToast('Repeat: ' + repeatMode.charAt(0).toUpperCase() + repeatMode.slice(1));
+                    break;
+                case 'Escape':
+                    if (shortcutsOverlay.classList.contains('open')) {
+                        shortcutsOverlay.classList.remove('open');
+                    } else if (document.fullscreenElement || document.webkitFullscreenElement) {
+                        exitCinema();
+                    }
+                    break;
+                default:
+                    if (e.key === '?') {
+                        toggleShortcutsModal();
+                    }
+                    break;
             }
         });
 
@@ -1469,6 +2213,7 @@
                 }
 
                 message.hidden = true;
+                recitersPanel.hidden = true;
                 setMeta(data.title || 'Quran Recitation', data.author || 'Verified input');
 
                 mediaActive = true;
@@ -1494,6 +2239,8 @@
                     audioPlayer.play().catch(() => {});
                     setupAudioReactive(audioPlayer);
                     lastReactive = true;
+                    // Show surah name from title or filename
+                    showSurahName(data.title || url.split('/').pop());
                 }
 
                 // Try to enter cinema mode; may fail if user gesture expired
