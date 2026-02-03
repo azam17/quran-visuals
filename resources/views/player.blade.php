@@ -522,7 +522,7 @@
             transform: translateX(-50%) translateY(0);
         }
 
-        /* ── Control icon buttons (sleep, repeat, screenshot, share, shortcuts) ── */
+        /* ── Control icon buttons (repeat, screenshot, share, shortcuts) ── */
         .ctrl-btn {
             display: inline-flex;
             align-items: center;
@@ -571,49 +571,6 @@
             line-height: 18px;
             text-align: center;
             pointer-events: none;
-        }
-
-        /* ── Sleep timer dropdown ───────────────────────────────────────── */
-        .sleep-dropdown {
-            position: absolute;
-            top: calc(100% + 6px);
-            right: 0;
-            min-width: 120px;
-            padding: 6px 0;
-            border-radius: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            background: rgba(14, 16, 22, 0.95);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            z-index: 200;
-            display: none;
-        }
-
-        .sleep-dropdown.open {
-            display: block;
-        }
-
-        .sleep-dropdown button {
-            display: block;
-            width: 100%;
-            padding: 8px 16px;
-            border: none;
-            background: none;
-            color: var(--muted);
-            font-family: "Inter", sans-serif;
-            font-size: 0.85rem;
-            text-align: left;
-            cursor: pointer;
-            transition: background 0.15s, color 0.15s;
-        }
-
-        .sleep-dropdown button:hover {
-            background: rgba(255, 255, 255, 0.06);
-            color: var(--text);
-        }
-
-        .sleep-dropdown button.selected {
-            color: var(--accent);
         }
 
         /* ── Keyboard shortcuts modal ───────────────────────────────────── */
@@ -834,20 +791,6 @@
                 <input type="color" id="color-picker" value="{{ $presets[0]['vars']['--accent'] }}" aria-label="Accent color" title="Accent color">
                 <button type="submit">Enter Cinema</button>
 
-                {{-- Sleep Timer --}}
-                <button type="button" class="ctrl-btn" id="sleep-btn" title="Sleep Timer">
-                    <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></svg>
-                    <span class="badge" id="sleep-badge" style="display:none;"></span>
-                    <div class="sleep-dropdown" id="sleep-dropdown">
-                        <button type="button" data-minutes="15">15 minutes</button>
-                        <button type="button" data-minutes="30">30 minutes</button>
-                        <button type="button" data-minutes="45">45 minutes</button>
-                        <button type="button" data-minutes="60">1 hour</button>
-                        <button type="button" data-minutes="120">2 hours</button>
-                        <button type="button" data-minutes="0">Off</button>
-                    </div>
-                </button>
-
                 {{-- Repeat/Loop --}}
                 <button type="button" class="ctrl-btn" id="repeat-btn" title="Repeat: Off">
                     <svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
@@ -961,9 +904,6 @@
 
         // ── New feature elements ──────────────────────────────────────────
         const toast = document.getElementById('toast');
-        const sleepBtn = document.getElementById('sleep-btn');
-        const sleepDropdown = document.getElementById('sleep-dropdown');
-        const sleepBadge = document.getElementById('sleep-badge');
         const repeatBtn = document.getElementById('repeat-btn');
         const repeatBadge = document.getElementById('repeat-badge');
         const screenshotBtn = document.getElementById('screenshot-btn');
@@ -983,75 +923,6 @@
             clearTimeout(toastTimer);
             toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
         }
-
-        // ── Sleep Timer ───────────────────────────────────────────────────
-        let sleepTimeout = null;
-        let sleepInterval = null;
-        let sleepEndTime = 0;
-
-        function clearSleepTimer() {
-            clearTimeout(sleepTimeout);
-            clearInterval(sleepInterval);
-            sleepTimeout = null;
-            sleepInterval = null;
-            sleepEndTime = 0;
-            sleepBadge.style.display = 'none';
-            sleepBtn.classList.remove('active');
-            sleepDropdown.querySelectorAll('button').forEach(b => b.classList.remove('selected'));
-        }
-
-        function startSleepTimer(minutes) {
-            clearSleepTimer();
-            if (minutes <= 0) return;
-            sleepEndTime = Date.now() + minutes * 60 * 1000;
-            sleepBtn.classList.add('active');
-
-            // Mark selected option
-            sleepDropdown.querySelectorAll('button').forEach(b => {
-                if (parseInt(b.dataset.minutes) === minutes) b.classList.add('selected');
-            });
-
-            // Update badge every 30s
-            function updateBadge() {
-                const remaining = Math.max(0, sleepEndTime - Date.now());
-                const mins = Math.ceil(remaining / 60000);
-                if (mins > 60) {
-                    const hrs = Math.floor(mins / 60);
-                    sleepBadge.textContent = hrs + 'h';
-                } else {
-                    sleepBadge.textContent = mins + 'm';
-                }
-                sleepBadge.style.display = '';
-            }
-            updateBadge();
-            sleepInterval = setInterval(updateBadge, 30000);
-
-            sleepTimeout = setTimeout(() => {
-                // Pause playback
-                if (ytMode && ytApiPlayer) {
-                    try { ytApiPlayer.pauseVideo(); } catch (e) {}
-                } else if (!audioPlayer.hidden && !audioPlayer.paused) {
-                    audioPlayer.pause();
-                }
-                clearSleepTimer();
-                showToast('Sleep timer ended');
-            }, minutes * 60 * 1000);
-        }
-
-        sleepBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            sleepDropdown.classList.toggle('open');
-        });
-
-        sleepDropdown.addEventListener('click', (e) => {
-            const btn = e.target.closest('button[data-minutes]');
-            if (!btn) return;
-            e.stopPropagation();
-            startSleepTimer(parseInt(btn.dataset.minutes));
-            sleepDropdown.classList.remove('open');
-        });
-
-        document.addEventListener('click', () => sleepDropdown.classList.remove('open'));
 
         // ── Repeat / Loop Mode ────────────────────────────────────────────
         let repeatMode = 'off'; // 'off' | 'one' | 'all'
@@ -1820,12 +1691,18 @@
 
             const preset = getCurrentPreset();
             const hsl = hexToHsl(hex);
-            const newLayers = getLayersForHue(hsl.h, hex, darker);
-            // Only clear canvas if effect type changed (not just color tweak)
+            const newPrimary = getLayersForHue(hsl.h, hex, darker);
+            // Only clear canvas if primary effect type changed
             const oldEffect = preset.layers[0] && preset.layers[0].effect;
-            const newEffect = newLayers[0] && newLayers[0].effect;
+            const newEffect = newPrimary[0] && newPrimary[0].effect;
             if (oldEffect !== newEffect) clearCanvas();
-            preset.layers = newLayers;
+            // Replace primary layer but preserve secondary layers with updated color
+            preset.layers[0] = newPrimary[0];
+            for (let i = 1; i < preset.layers.length; i++) {
+                if (preset.layers[i].params) {
+                    preset.layers[i].params.color = hex;
+                }
+            }
         }
 
         // averageVolume kept for backwards compat but unused in draw loop
