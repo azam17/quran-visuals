@@ -980,9 +980,9 @@
             <div id="surah-display"></div>
             <div id="subtitle-overlay"></div>
             <div id="sync-controls" class="sync-controls">
-                <button id="sync-slower" class="sync-btn" title="Delay text (reciter is ahead)">−5s</button>
+                <button id="sync-slower" class="sync-btn" title="Delay text (reciter is ahead)">−3s</button>
                 <span id="sync-label" class="sync-label">Sync: 0s</span>
-                <button id="sync-faster" class="sync-btn" title="Advance text (reciter is behind)">+5s</button>
+                <button id="sync-faster" class="sync-btn" title="Advance text (reciter is behind)">+3s</button>
             </div>
             <div class="player">
                 <iframe id="yt-player" title="YouTube Quran Player" allow="autoplay; fullscreen" allowfullscreen hidden></iframe>
@@ -2118,9 +2118,17 @@
                 if (ayahs.length === 0) return;
 
                 subtitleData = buildTimedSegments(ayahs, videoDuration, totalTimingDuration);
-                // Show sync controls so user can adjust timing offset
+
+                // Smart auto-offset: if the video is longer than the QUL reference,
+                // the extra time is likely intro/outro. Estimate a small intro offset
+                // so text doesn't run ahead of the reciter.
                 subtitleOffset = 0;
-                syncLabel.textContent = 'Sync: 0s';
+                if (totalTimingDuration && videoDuration > totalTimingDuration * 1.03) {
+                    const extraTime = videoDuration - totalTimingDuration;
+                    // Assume ~3-5% of extra time is intro, capped at 90s
+                    subtitleOffset = Math.min(90, Math.round(extraTime * 0.04));
+                }
+                syncLabel.textContent = 'Sync: ' + (subtitleOffset > 0 ? '+' : '') + subtitleOffset + 's';
                 syncControls.classList.add('visible');
             } catch (e) {
                 // API not available — silent fail
@@ -2346,13 +2354,16 @@
         })();
 
         // Sync controls: +/- buttons to adjust subtitle offset
-        document.getElementById('sync-slower').addEventListener('click', () => {
-            subtitleOffset += 5;
+        function updateSyncLabel() {
             syncLabel.textContent = 'Sync: ' + (subtitleOffset > 0 ? '+' : '') + subtitleOffset + 's';
+        }
+        document.getElementById('sync-slower').addEventListener('click', () => {
+            subtitleOffset += 3;
+            updateSyncLabel();
         });
         document.getElementById('sync-faster').addEventListener('click', () => {
-            subtitleOffset -= 5;
-            syncLabel.textContent = 'Sync: ' + (subtitleOffset > 0 ? '+' : '') + subtitleOffset + 's';
+            subtitleOffset -= 3;
+            updateSyncLabel();
         });
 
         // ── YouTube IFrame API ────────────────────────────────────────────
