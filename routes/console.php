@@ -2,6 +2,7 @@
 
 use App\Models\FeedbackItem;
 use App\Models\User;
+use App\Services\QuranApiService;
 use App\Services\QuranUrlInspector;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -379,3 +380,132 @@ Artisan::command('quran:transcribe {url} {--model=base} {--language=ar} {--slug=
     $this->line('Public URL (requires storage:link): '.Storage::url('subtitles/'.$slug.'.json'));
     return 0;
 })->purpose('Download audio and generate Whisper subtitles for a Quran recitation');
+
+// ── quran:cache-surahs ─────────────────────────────────────────────────
+Artisan::command('quran:cache-surahs {--all : Cache all 114 surahs}', function () {
+    $quranApi = app(QuranApiService::class);
+
+    $this->info('Caching surah list...');
+    $surahs = $quranApi->getSurahList();
+
+    if (empty($surahs)) {
+        $this->error('Failed to fetch surah list from API.');
+        return 1;
+    }
+
+    $this->info('Cached '.count($surahs).' surahs in the list.');
+
+    if ($this->option('all')) {
+        $this->info('Caching all 114 surahs...');
+        $bar = $this->output->createProgressBar(114);
+        $bar->start();
+
+        for ($i = 1; $i <= 114; $i++) {
+            $quranApi->getSurahText($i);
+            $bar->advance();
+        }
+
+        $bar->finish();
+        $this->newLine();
+        $this->info('All 114 surahs cached.');
+    } else {
+        // Cache surahs detected from curated reciters' video titles
+        $reciters = config('quran.reciters', []);
+        $cached = [];
+
+        foreach ($reciters as $reciter) {
+            $videoId = $reciter['videoId'] ?? '';
+            if (!$videoId) continue;
+
+            try {
+                $response = Http::timeout(5)->get('https://www.youtube.com/oembed', [
+                    'url' => "https://www.youtube.com/watch?v={$videoId}",
+                    'format' => 'json',
+                ]);
+
+                if (!$response->ok()) continue;
+
+                $title = $response->json('title') ?? '';
+                $detected = $quranApi->detectSurahFromTitle($title);
+
+                if ($detected && !in_array($detected['number'], $cached, true)) {
+                    $this->line("  {$reciter['name']}: {$detected['englishName']} (#{$detected['number']})");
+                    $quranApi->getSurahText($detected['number']);
+                    $cached[] = $detected['number'];
+                }
+            } catch (\Throwable $e) {
+                $this->warn("  {$reciter['name']}: skipped ({$e->getMessage()})");
+            }
+        }
+
+        $this->info('Cached '.count($cached).' surahs from curated reciters.');
+    }
+
+    return 0;
+})->purpose('Pre-cache Quran surah data from api.alquran.cloud');
+
+// ── quran:download-timing ─────────────────────────────────────────────
+Artisan::command('quran:download-timing {--reciter=118 : QUL reciter ID (default: 118 = Mishary Rashid al-Afasy)}', function () {
+    $reciterId = (int) $this->option('reciter');
+    $baseUrl = 'https://qul.tarteel.ai/api/audio-segments';
+
+    $timingDir = storage_path('app/quran-timing');
+    if (!is_dir($timingDir)) {
+        mkdir($timingDir, 0755, true);
+    }
+
+    $this->info("Downloading QUL timing data for reciter ID {$reciterId}...");
+    $bar = $this->output->createProgressBar(114);
+    $bar->start();
+
+    $allData = [];
+    $successCount = 0;
+
+    for ($surah = 1; $surah <= 114; $surah++) {
+        try {
+            $response = Http::timeout(15)->get($baseUrl, [
+                'reciter_id' => $reciterId,
+                'surah_number' => $surah,
+            ]);
+
+            if ($response->ok()) {
+                $data = $response->json();
+                if ($data && is_array($data)) {
+                    // Save per-surah file
+                    file_put_contents(
+                        "{$timingDir}/surah-{$surah}.json",
+                        json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
+                    );
+
+                    // Merge into combined file
+                    foreach ($data as $key => $segment) {
+                        $allData[$key] = $segment;
+                    }
+
+                    $successCount++;
+                }
+            }
+        } catch (\Throwable $e) {
+            // Continue to next surah on failure
+        }
+
+        $bar->advance();
+
+        // Small delay to avoid rate limiting
+        usleep(100_000);
+    }
+
+    $bar->finish();
+    $this->newLine();
+
+    // Save combined reference file
+    file_put_contents(
+        "{$timingDir}/reference.json",
+        json_encode($allData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
+    );
+
+    $this->info("Downloaded timing data for {$successCount}/114 surahs.");
+    $this->line("Saved to: {$timingDir}/");
+
+    return 0;
+})->purpose('Download QUL reference timing data for Quran recitation word-level timing');

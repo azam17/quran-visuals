@@ -213,6 +213,75 @@
             color: var(--text);
         }
 
+        .detection-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.82rem;
+            color: var(--muted);
+        }
+
+        .detection-bar[hidden] { display: none; }
+
+        .detection-bar .detection-change {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 0.78rem;
+            opacity: 0.8;
+            cursor: pointer;
+        }
+
+        .detection-bar .detection-change:hover {
+            opacity: 1;
+            text-decoration: underline;
+        }
+
+        .surah-override {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .surah-override[hidden] { display: none; }
+
+        .override-select {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 0.78rem;
+            padding: 4px 8px;
+            max-width: 200px;
+            font-family: "Inter", sans-serif;
+        }
+
+        .override-input {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 0.78rem;
+            padding: 4px 8px;
+            width: 52px;
+            font-family: "Inter", sans-serif;
+        }
+
+        .override-apply-btn {
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            border: none;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 0.78rem;
+            padding: 4px 12px;
+            cursor: pointer;
+            font-family: "Inter", sans-serif;
+        }
+
+        .override-apply-btn:hover {
+            filter: brightness(1.1);
+        }
+
         .message {
             position: absolute;
             inset: 0;
@@ -799,6 +868,15 @@
                          0 2px 12px rgba(0, 0, 0, 0.8);
         }
 
+        #subtitle-overlay .ayah-badge {
+            font-family: "Inter", sans-serif;
+            font-size: 0.55em;
+            color: var(--muted);
+            opacity: 0.5;
+            margin-right: 8px;
+            vertical-align: super;
+        }
+
         .stage:fullscreen #subtitle-overlay,
         .stage:-webkit-full-screen #subtitle-overlay {
             bottom: 10%;
@@ -890,6 +968,19 @@
                 <div><strong id="meta-title">Ready</strong></div>
                 <div id="meta-subtitle">Awaiting input</div>
                 <div id="meta-warning"></div>
+                <div id="detection-bar" class="detection-bar" hidden>
+                    <span id="detection-label"></span>
+                    <a href="#" id="detection-change" class="detection-change">Change</a>
+                </div>
+                <div id="surah-override" class="surah-override" hidden>
+                    <select id="override-surah" class="override-select" aria-label="Select surah">
+                        <option value="">-- Select surah --</option>
+                    </select>
+                    <input type="number" id="override-ayah-start" class="override-input" placeholder="From" min="1" aria-label="Ayah start">
+                    <input type="number" id="override-ayah-end" class="override-input" placeholder="To" min="1" aria-label="Ayah end">
+                    <button id="override-apply" class="override-apply-btn">Apply</button>
+                    <a href="#" id="override-cancel" class="detection-change">Cancel</a>
+                </div>
             </div>
             <button id="exit-cinema" class="cinema-exit-btn" hidden>Exit Cinema</button>
             <button id="playpause-btn" class="cinema-playpause" hidden>
@@ -969,6 +1060,15 @@
         const surahDisplay = document.getElementById('surah-display');
         const recitersPanel = document.getElementById('reciters-panel');
         const recitersGrid = document.getElementById('reciters-grid');
+        const detectionBar = document.getElementById('detection-bar');
+        const detectionLabel = document.getElementById('detection-label');
+        const detectionChange = document.getElementById('detection-change');
+        const surahOverride = document.getElementById('surah-override');
+        const overrideSurah = document.getElementById('override-surah');
+        const overrideAyahStart = document.getElementById('override-ayah-start');
+        const overrideAyahEnd = document.getElementById('override-ayah-end');
+        const overrideApply = document.getElementById('override-apply');
+        const overrideCancel = document.getElementById('override-cancel');
 
         // ── Toast utility ─────────────────────────────────────────────────
         let toastTimer = null;
@@ -1838,6 +1938,103 @@
         const subtitleOverlay = document.getElementById('subtitle-overlay');
         let subtitleData = null;
         let currentSegmentId = -1;
+        let pendingSurahLoad = null;
+        let surahListCache = null;
+
+        // ── Detection Feedback Bar + Manual Override ────────────────────────
+
+        const SURAH_NAMES = [
+            'Al-Fatiha','Al-Baqarah','Ali Imran','An-Nisa','Al-Maidah','Al-Anam','Al-Araf',
+            'Al-Anfal','At-Tawbah','Yunus','Hud','Yusuf','Ar-Rad','Ibrahim','Al-Hijr','An-Nahl',
+            'Al-Isra','Al-Kahf','Maryam','Ta-Ha','Al-Anbiya','Al-Hajj','Al-Muminun','An-Nur',
+            'Al-Furqan','Ash-Shuara','An-Naml','Al-Qasas','Al-Ankabut','Ar-Rum','Luqman',
+            'As-Sajdah','Al-Ahzab','Saba','Fatir','Ya-Sin','As-Saffat','Sad','Az-Zumar','Ghafir',
+            'Fussilat','Ash-Shura','Az-Zukhruf','Ad-Dukhan','Al-Jathiya','Al-Ahqaf','Muhammad',
+            'Al-Fath','Al-Hujurat','Qaf','Adh-Dhariyat','At-Tur','An-Najm','Al-Qamar','Ar-Rahman',
+            'Al-Waqiah','Al-Hadid','Al-Mujadila','Al-Hashr','Al-Mumtahina','As-Saff','Al-Jumuah',
+            'Al-Munafiqun','At-Taghabun','At-Talaq','At-Tahrim','Al-Mulk','Al-Qalam','Al-Haqqah',
+            'Al-Maarij','Nuh','Al-Jinn','Al-Muzzammil','Al-Muddaththir','Al-Qiyamah','Al-Insan',
+            'Al-Mursalat','An-Naba','An-Naziat','Abasa','At-Takwir','Al-Infitar','Al-Mutaffifin',
+            'Al-Inshiqaq','Al-Buruj','At-Tariq','Al-Ala','Al-Ghashiyah','Al-Fajr','Al-Balad',
+            'Ash-Shams','Al-Layl','Ad-Duha','Ash-Sharh','At-Tin','Al-Alaq','Al-Qadr','Al-Bayyinah',
+            'Az-Zalzalah','Al-Adiyat','Al-Qariah','At-Takathur','Al-Asr','Al-Humazah','Al-Fil',
+            'Quraysh','Al-Maun','Al-Kawthar','Al-Kafirun','An-Nasr','Al-Masad','Al-Ikhlas',
+            'Al-Falaq','An-Nas'
+        ];
+
+        function showDetectionBar(surahName, ayahStart, ayahEnd) {
+            let label = 'Detected: ' + surahName;
+            if (ayahStart && ayahEnd && ayahStart === ayahEnd) {
+                label += ' (Ayah ' + ayahStart + ')';
+            } else if (ayahStart && ayahEnd) {
+                label += ' (Ayahs ' + ayahStart + '-' + ayahEnd + ')';
+            }
+            detectionLabel.textContent = label;
+            detectionBar.hidden = false;
+            surahOverride.hidden = true;
+        }
+
+        function hideDetectionBar() {
+            detectionBar.hidden = true;
+            surahOverride.hidden = true;
+        }
+
+        function populateSurahSelect() {
+            if (surahListCache) return;
+            while (overrideSurah.options.length > 1) {
+                overrideSurah.remove(1);
+            }
+            for (let i = 0; i < 114; i++) {
+                const opt = document.createElement('option');
+                opt.value = i + 1;
+                opt.textContent = (i + 1) + '. ' + SURAH_NAMES[i];
+                overrideSurah.appendChild(opt);
+            }
+            surahListCache = true;
+        }
+
+        detectionChange.addEventListener('click', (e) => {
+            e.preventDefault();
+            populateSurahSelect();
+            detectionBar.hidden = true;
+            surahOverride.hidden = false;
+        });
+
+        overrideCancel.addEventListener('click', (e) => {
+            e.preventDefault();
+            surahOverride.hidden = true;
+            detectionBar.hidden = false;
+        });
+
+        overrideApply.addEventListener('click', () => {
+            const surahNum = parseInt(overrideSurah.value, 10);
+            if (!surahNum || surahNum < 1 || surahNum > 114) {
+                showToast('Select a surah first');
+                return;
+            }
+
+            const ayahStart = parseInt(overrideAyahStart.value, 10) || null;
+            const ayahEnd = parseInt(overrideAyahEnd.value, 10) || null;
+
+            // Get current video duration
+            let duration = 0;
+            if (ytMode && ytApiPlayer) {
+                duration = ytApiPlayer.getDuration();
+            } else if (!audioPlayer.hidden && audioPlayer.duration) {
+                duration = audioPlayer.duration;
+            }
+
+            if (duration <= 0) {
+                showToast('No video duration available');
+                return;
+            }
+
+            const name = SURAH_NAMES[surahNum - 1] || ('Surah ' + surahNum);
+            showDetectionBar(name, ayahStart, ayahEnd);
+
+            loadQuranAyahs(surahNum, duration, ayahStart, ayahEnd);
+            showToast('Loading ' + name + '...');
+        });
 
         async function loadSubtitles(slug) {
             subtitleData = null;
@@ -1853,6 +2050,180 @@
             } catch (e) {
                 // Subtitle file not available — silent fail
             }
+        }
+
+        /**
+         * Load Quran ayahs from the API and build timed subtitle segments.
+         * ayahStart/ayahEnd allow partial surah loading (e.g., only ayahs 1-50).
+         */
+        async function loadQuranAyahs(surahNumber, videoDuration, ayahStart, ayahEnd) {
+            subtitleData = null;
+            currentSegmentId = -1;
+            subtitleOverlay.textContent = '';
+
+            if (!surahNumber || !videoDuration || videoDuration <= 0) return;
+
+            try {
+                const res = await fetch(`/api/surah/${surahNumber}`);
+                if (!res.ok) return;
+                const data = await res.json();
+
+                let ayahs = data.ayahs || [];
+
+                // Filter to ayah range if specified (partial surah in video)
+                if (ayahStart && ayahEnd && ayahStart <= ayahEnd) {
+                    ayahs = ayahs.filter(a => a.numberInSurah >= ayahStart && a.numberInSurah <= ayahEnd);
+                } else if (ayahStart && !ayahEnd) {
+                    ayahs = ayahs.filter(a => a.numberInSurah >= ayahStart);
+                }
+
+                if (ayahs.length === 0) return;
+
+                subtitleData = buildTimedSegments(ayahs, videoDuration);
+            } catch (e) {
+                // API not available — silent fail
+            }
+        }
+
+        /**
+         * Build timed segments from ayahs, using QUL reference timing when
+         * available, falling back to character-count proportional timing.
+         */
+        function buildTimedSegments(ayahs, videoDuration) {
+            const hasQulTiming = ayahs.some(a => a.timing && a.timing.proportion);
+
+            if (hasQulTiming) {
+                return buildTimedSegmentsFromReference(ayahs, videoDuration);
+            }
+            return buildTimedSegmentsFromCharCount(ayahs, videoDuration);
+        }
+
+        /**
+         * QUL reference timing: use real recitation proportions scaled to video duration.
+         */
+        function buildTimedSegmentsFromReference(ayahs, videoDuration) {
+            // Reserve ~5% for inter-ayah pauses
+            const pauseTotal = videoDuration * 0.05;
+            const pausePerAyah = ayahs.length > 1 ? pauseTotal / (ayahs.length - 1) : 0;
+            const recitationDuration = videoDuration - pauseTotal;
+
+            // Normalize proportions to sum to 1 for the subset of ayahs we have
+            const totalProportion = ayahs.reduce((sum, a) => {
+                return sum + (a.timing && a.timing.proportion ? a.timing.proportion : 0);
+            }, 0);
+
+            const segments = [];
+            let currentTime = 0;
+
+            for (let i = 0; i < ayahs.length; i++) {
+                const ayah = ayahs[i];
+                const proportion = (ayah.timing && ayah.timing.proportion) ? ayah.timing.proportion : 0;
+                const ayahDuration = totalProportion > 0
+                    ? (proportion / totalProportion) * recitationDuration
+                    : recitationDuration / ayahs.length;
+
+                const words = [];
+                const wordProportions = (ayah.timing && ayah.timing.wordProportions) ? ayah.timing.wordProportions : [];
+                const wordCount = ayah.words ? ayah.words.length : 1;
+
+                if (ayah.words && ayah.words.length > 0) {
+                    let wordTime = currentTime;
+                    for (let w = 0; w < ayah.words.length; w++) {
+                        // Use QUL word proportions if available and matching count
+                        let wDuration;
+                        if (wordProportions.length === ayah.words.length && wordProportions[w]) {
+                            wDuration = wordProportions[w] * ayahDuration;
+                        } else {
+                            wDuration = ayahDuration / wordCount;
+                        }
+                        words.push({
+                            text: ayah.words[w],
+                            start: wordTime,
+                            end: wordTime + wDuration,
+                        });
+                        wordTime += wDuration;
+                    }
+                }
+
+                segments.push({
+                    id: i,
+                    text: ayah.text,
+                    start: currentTime,
+                    end: currentTime + ayahDuration,
+                    words: words,
+                    ayahNumber: ayah.numberInSurah,
+                });
+
+                currentTime += ayahDuration;
+                // Add inter-ayah pause (except after last ayah)
+                if (i < ayahs.length - 1) {
+                    currentTime += pausePerAyah;
+                }
+            }
+
+            return { language: 'ar', segments: segments };
+        }
+
+        /**
+         * Fallback: character-count proportional timing with inter-ayah pauses.
+         */
+        function buildTimedSegmentsFromCharCount(ayahs, videoDuration) {
+            // Reserve ~5% for inter-ayah pauses
+            const pauseTotal = videoDuration * 0.05;
+            const pausePerAyah = ayahs.length > 1 ? pauseTotal / (ayahs.length - 1) : 0;
+            const recitationDuration = videoDuration - pauseTotal;
+
+            // Use character count (excluding spaces) as duration proxy
+            const totalChars = ayahs.reduce((sum, a) => {
+                return sum + (a.text ? a.text.replace(/\s/g, '').length : 1);
+            }, 0);
+            if (totalChars === 0) return null;
+
+            const segments = [];
+            let currentTime = 0;
+
+            for (let i = 0; i < ayahs.length; i++) {
+                const ayah = ayahs[i];
+                const charCount = ayah.text ? ayah.text.replace(/\s/g, '').length : 1;
+                const ayahDuration = (charCount / totalChars) * recitationDuration;
+
+                const words = [];
+                const wordCount = ayah.words ? ayah.words.length : 1;
+
+                if (ayah.words && ayah.words.length > 0) {
+                    // Distribute within ayah by per-word character count
+                    const wordChars = ayah.words.map(w => w.length);
+                    const wordCharTotal = wordChars.reduce((a, b) => a + b, 0) || 1;
+                    let wordTime = currentTime;
+
+                    for (let w = 0; w < ayah.words.length; w++) {
+                        const wDuration = (wordChars[w] / wordCharTotal) * ayahDuration;
+                        words.push({
+                            text: ayah.words[w],
+                            start: wordTime,
+                            end: wordTime + wDuration,
+                        });
+                        wordTime += wDuration;
+                    }
+                }
+
+                segments.push({
+                    id: i,
+                    text: ayah.text,
+                    start: currentTime,
+                    end: currentTime + ayahDuration,
+                    words: words,
+                    ayahNumber: ayah.numberInSurah,
+                });
+
+                currentTime += ayahDuration;
+                // Add inter-ayah pause (except after last ayah)
+                if (i < ayahs.length - 1) {
+                    currentTime += pausePerAyah;
+                }
+            }
+
+            return { language: 'ar', segments: segments };
         }
 
         function renderSegment(seg) {
@@ -1874,6 +2245,14 @@
                 });
             } else {
                 span.textContent = seg.text;
+            }
+
+            // Show ayah number badge for Quran API segments
+            if (seg.ayahNumber) {
+                const badge = document.createElement('span');
+                badge.className = 'ayah-badge';
+                badge.textContent = '\u06DD' + seg.ayahNumber;
+                span.appendChild(badge);
             }
 
             subtitleOverlay.appendChild(span);
@@ -1980,6 +2359,20 @@
                             const data = ytApiPlayer.getVideoData();
                             if (data && data.title) showSurahName(data.title);
                         } catch (e) {}
+
+                        // Load Quran API subtitles once we know video duration
+                        if (pendingSurahLoad) {
+                            const duration = ytApiPlayer.getDuration();
+                            if (duration > 0) {
+                                loadQuranAyahs(
+                                    pendingSurahLoad.surahNumber,
+                                    duration,
+                                    pendingSurahLoad.ayahStart,
+                                    pendingSurahLoad.ayahEnd
+                                );
+                            }
+                            pendingSurahLoad = null;
+                        }
                     },
                 },
             });
@@ -2228,6 +2621,7 @@
             subtitleData = null;
             currentSegmentId = -1;
             subtitleOverlay.textContent = '';
+            hideDetectionBar();
 
             try {
                 const response = await fetch('/api/validate', {
@@ -2277,9 +2671,31 @@
                     showSurahName(data.title || url.split('/').pop());
                 }
 
-                // Load subtitles if available
+                // Load subtitles: Whisper file takes priority, then Quran API
                 if (data.subtitle_slug) {
                     loadSubtitles(data.subtitle_slug);
+                    hideDetectionBar();
+                } else if (data.surah_number) {
+                    // Store pending surah load — needs video duration from YT onReady
+                    pendingSurahLoad = {
+                        surahNumber: data.surah_number,
+                        ayahStart: data.surah_ayah_start || null,
+                        ayahEnd: data.surah_ayah_end || null,
+                    };
+                    // Show detection feedback
+                    showDetectionBar(
+                        data.surah_name || ('Surah ' + data.surah_number),
+                        data.surah_ayah_start,
+                        data.surah_ayah_end
+                    );
+                    // Pre-fill override fields
+                    overrideAyahStart.value = data.surah_ayah_start || '';
+                    overrideAyahEnd.value = data.surah_ayah_end || '';
+                } else {
+                    // No detection — show "Change" directly so user can manually select
+                    detectionLabel.textContent = 'No surah detected';
+                    detectionBar.hidden = false;
+                    surahOverride.hidden = true;
                 }
 
                 // Try to enter cinema mode; may fail if user gesture expired
