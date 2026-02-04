@@ -2,8 +2,10 @@
 
 use App\Models\FeedbackItem;
 use App\Models\User;
+use App\Services\ArabicNormalizer;
 use App\Services\QuranApiService;
 use App\Services\QuranUrlInspector;
+use App\Services\WhisperAligner;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
@@ -529,3 +531,155 @@ Artisan::command('quran:download-timing {--reciter=7 : QDC reciter ID (default: 
 
     return 0;
 })->purpose('Download QUL reference timing data for Quran recitation word-level timing');
+
+// ── quran:align ──────────────────────────────────────────────────────
+Artisan::command('quran:align {slug} {surah} {--force : Overwrite existing aligned file}', function () {
+    $slug = $this->argument('slug');
+    $surah = (int) $this->argument('surah');
+    $force = $this->option('force');
+
+    if ($surah < 1 || $surah > 114) {
+        $this->error('Surah number must be between 1 and 114.');
+        return 1;
+    }
+
+    $whisperPath = storage_path("app/public/subtitles/{$slug}.json");
+    if (!file_exists($whisperPath)) {
+        $this->error("Whisper file not found: {$whisperPath}");
+        return 1;
+    }
+
+    $outputPath = storage_path("app/public/subtitles/{$slug}.aligned.json");
+    if (file_exists($outputPath) && !$force) {
+        $this->warn("Aligned file already exists: {$outputPath}");
+        $this->line('Use --force to overwrite.');
+        return 1;
+    }
+
+    $this->info("Aligning {$slug} with Surah {$surah}...");
+
+    $whisperData = json_decode(file_get_contents($whisperPath), true);
+    if (!$whisperData || empty($whisperData['segments'])) {
+        $this->error('Invalid or empty Whisper JSON.');
+        return 1;
+    }
+
+    $aligner = app(WhisperAligner::class);
+    $result = $aligner->align($whisperData, $surah);
+
+    if (!$result) {
+        $this->error('Alignment failed — could not fetch Quran text from API.');
+        return 1;
+    }
+
+    file_put_contents($outputPath, json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+    // Output stats
+    $stats = $result['match_stats'] ?? [];
+    $segments = $result['segments'] ?? [];
+    $quranSegments = array_filter($segments, fn($s) => !isset($s['type']));
+    $gapSegments = array_filter($segments, fn($s) => ($s['type'] ?? '') === 'gap');
+    $gapDuration = array_sum(array_map(fn($s) => $s['end'] - $s['start'], $gapSegments));
+
+    $this->newLine();
+    $this->info('Alignment complete.');
+    $this->table(['Metric', 'Value'], [
+        ['Quran words', $stats['quran_words'] ?? 0],
+        ['Whisper words', $stats['whisper_words'] ?? 0],
+        ['Matched words', $stats['matched'] ?? 0],
+        ['Confidence', ($result['confidence'] ?? 0) * 100 . '%'],
+        ['Al-Fatihah detected', ($result['includes_fatihah'] ?? false) ? 'Yes' : 'No'],
+        ['Ayah segments', count($quranSegments)],
+        ['Gap segments', count($gapSegments)],
+        ['Total gap duration', round($gapDuration, 1) . 's'],
+    ]);
+    $this->line("Output: {$outputPath}");
+
+    return 0;
+})->purpose('Align Whisper transcription with Quran text for accurate subtitles');
+
+// ── quran:align-all ──────────────────────────────────────────────────
+Artisan::command('quran:align-all {--force : Overwrite existing aligned files}', function () {
+    $reciters = config('quran.reciters', []);
+    $quranApi = app(QuranApiService::class);
+    $force = $this->option('force');
+
+    if (empty($reciters)) {
+        $this->warn('No reciters configured in config/quran.php.');
+        return 0;
+    }
+
+    $this->info('Aligning subtitles for ' . count($reciters) . ' reciters...');
+    $results = [];
+
+    foreach ($reciters as $reciter) {
+        $videoId = $reciter['videoId'] ?? '';
+        $name = $reciter['name'] ?? 'Unknown';
+
+        if (!$videoId) {
+            $results[] = [$name, $videoId, '-', 'No video ID'];
+            continue;
+        }
+
+        $whisperPath = storage_path("app/public/subtitles/{$videoId}.json");
+        $alignedPath = storage_path("app/public/subtitles/{$videoId}.aligned.json");
+
+        // Check if aligned file already exists
+        if (file_exists($alignedPath) && !$force) {
+            $results[] = [$name, $videoId, '-', 'Already aligned (use --force)'];
+            continue;
+        }
+
+        // Check if Whisper file exists
+        if (!file_exists($whisperPath)) {
+            $results[] = [$name, $videoId, '-', 'No Whisper file — run quran:transcribe first'];
+            continue;
+        }
+
+        // Detect surah from YouTube title
+        $surahNumber = null;
+        try {
+            $response = Http::timeout(5)->get('https://www.youtube.com/oembed', [
+                'url' => "https://www.youtube.com/watch?v={$videoId}",
+                'format' => 'json',
+            ]);
+            if ($response->ok()) {
+                $title = $response->json('title') ?? '';
+                $detected = $quranApi->detectSurahFromTitle($title);
+                if ($detected) {
+                    $surahNumber = $detected['number'];
+                }
+            }
+        } catch (\Throwable $e) {
+            // Fall through
+        }
+
+        if (!$surahNumber) {
+            $results[] = [$name, $videoId, '-', 'Could not detect surah from title'];
+            continue;
+        }
+
+        // Run alignment
+        $this->line("  Aligning {$name} (Surah {$surahNumber})...");
+
+        $exitCode = Artisan::call('quran:align', [
+            'slug' => $videoId,
+            'surah' => $surahNumber,
+            '--force' => $force,
+        ]);
+
+        if ($exitCode === 0) {
+            // Read confidence from output file
+            $aligned = json_decode(file_get_contents($alignedPath), true);
+            $confidence = ($aligned['confidence'] ?? 0) * 100;
+            $results[] = [$name, $videoId, "Surah {$surahNumber}", "OK ({$confidence}% confidence)"];
+        } else {
+            $results[] = [$name, $videoId, "Surah {$surahNumber}", 'FAILED'];
+        }
+    }
+
+    $this->newLine();
+    $this->table(['Reciter', 'Video ID', 'Surah', 'Status'], $results);
+
+    return 0;
+})->purpose('Align Whisper subtitles for all curated reciters');

@@ -2096,6 +2096,13 @@
                 const res = await fetch(`/storage/subtitles/${encodeURIComponent(slug)}.json`);
                 if (!res.ok) return;
                 subtitleData = await res.json();
+
+                // Whisper-aligned subtitles have accurate timestamps from this
+                // exact video — no sync controls needed
+                if (subtitleData && subtitleData.source === 'whisper_aligned') {
+                    subtitleOffset = 0;
+                    syncControls.classList.remove('visible');
+                }
             } catch (e) {
                 // Subtitle file not available — silent fail
             }
@@ -2148,15 +2155,7 @@
 
                 if (ayahs.length === 0) return;
 
-                // Use QUL reference duration as the effective subtitle timeline,
-                // not the full video duration. Videos often have intros, outros,
-                // and extra content — stretching subtitles across the full video
-                // makes each ayah far too long. Scale up 15% for reciter variance.
-                const effectiveDuration = totalTimingDuration
-                    ? totalTimingDuration * 1.15
-                    : videoDuration;
-
-                subtitleData = buildTimedSegments(ayahs, effectiveDuration, totalTimingDuration);
+                subtitleData = buildTimedSegments(ayahs, videoDuration, totalTimingDuration);
 
                 // Generate a sync key from the video URL for localStorage
                 currentSyncKey = 'qv_sync_' + input.value.trim().replace(/[^a-zA-Z0-9]/g, '_').slice(0, 80);
@@ -2359,9 +2358,10 @@
                 return;
             }
 
-            // Find the current segment
+            // Find the current segment (skip gap segments from aligned data)
             let seg = null;
             for (const s of subtitleData.segments) {
+                if (s.type === 'gap') continue;
                 if (currentTime >= s.start && currentTime <= s.end) {
                     seg = s;
                     break;

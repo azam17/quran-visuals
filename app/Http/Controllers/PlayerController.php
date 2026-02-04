@@ -40,6 +40,18 @@ class PlayerController extends Controller
                     $result['subtitle_source'] = 'quran_api';
                 }
             }
+
+            // Check for Whisper-aligned subtitle file (highest priority)
+            if (($result['type'] ?? '') === 'youtube') {
+                $videoId = $this->extractVideoId($data['url']);
+                if ($videoId) {
+                    $alignedPath = storage_path("app/public/subtitles/{$videoId}.aligned.json");
+                    if (file_exists($alignedPath)) {
+                        $result['subtitle_slug'] = $videoId . '.aligned';
+                        $result['subtitle_source'] = 'whisper_aligned';
+                    }
+                }
+            }
         }
 
         return response()->json($result);
