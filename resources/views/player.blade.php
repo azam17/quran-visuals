@@ -2720,6 +2720,9 @@
             const url = input.value.trim();
             if (!url) return;
 
+            // Enter fullscreen immediately while user gesture is still valid
+            enterCinema();
+
             setMessage('Checking recitation source...', false);
             meta.hidden = true;
 
@@ -2760,6 +2763,7 @@
                 const data = await response.json();
                 if (!data.ok) {
                     setMessage(data.reason || 'Blocked: not recognized as Quran recitation.', true);
+                    exitCinema();
                     return;
                 }
 
@@ -2821,10 +2825,9 @@
                     surahOverride.hidden = true;
                 }
 
-                // Try to enter cinema mode; may fail if user gesture expired
-                enterCinema();
             } catch (error) {
                 setMessage('Could not validate the URL. Try again.', true);
+                exitCinema();
             }
         });
 
