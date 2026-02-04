@@ -381,6 +381,8 @@ return [
     ],
 
     'yt_dlp_binary' => env('YT_DLP_BINARY', 'yt-dlp'),
+    'yt_dlp_cookies' => env('YT_DLP_COOKIES'),
+    'yt_dlp_js_runtime' => env('YT_DLP_JS_RUNTIME'),
 
     'python_binary' => env('PYTHON_BINARY', '/opt/homebrew/bin/python3'),
 

@@ -30,16 +30,34 @@ class YouTubeCaptionService
 
         $url = "https://www.youtube.com/watch?v={$videoId}";
 
-        // Run yt-dlp to fetch auto-generated Arabic captions in json3 format
-        $process = Process::timeout(15)->run([
+        // Build yt-dlp command
+        $cmd = [
             $binary,
             '--write-auto-sub',
             '--sub-lang', 'ar',
             '--sub-format', 'json3',
             '--skip-download',
             '-o', "{$tmpDir}/{$videoId}",
-            $url,
-        ]);
+        ];
+
+        // Add cookies file if configured
+        $cookiesPath = config('quran.yt_dlp_cookies');
+        if ($cookiesPath && file_exists($cookiesPath)) {
+            $cmd[] = '--cookies';
+            $cmd[] = $cookiesPath;
+        }
+
+        // Add JS runtime if node is available
+        $jsRuntime = config('quran.yt_dlp_js_runtime');
+        if ($jsRuntime) {
+            $cmd[] = '--js-runtimes';
+            $cmd[] = $jsRuntime;
+        }
+
+        $cmd[] = $url;
+
+        // Run yt-dlp to fetch auto-generated Arabic captions in json3 format
+        $process = Process::timeout(15)->run($cmd);
 
         if (!$process->successful()) {
             return null;
