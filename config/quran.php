@@ -380,7 +380,7 @@ return [
         'last 2 ayat baqarah' => ['surah' => 2, 'ayahStart' => 285, 'ayahEnd' => 286],
     ],
 
-    'yt_dlp_binary' => 'yt-dlp',
+    'yt_dlp_binary' => env('YT_DLP_BINARY', 'yt-dlp'),
 
     'python_binary' => env('PYTHON_BINARY', '/opt/homebrew/bin/python3'),
 
