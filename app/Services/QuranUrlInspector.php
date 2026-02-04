@@ -40,12 +40,14 @@ class QuranUrlInspector
             return $this->blocked('This does not look like Quran recitation based on the title/channel.');
         }
 
+        $origin = rtrim(url('/'), '/');
+
         return [
             'ok' => true,
             'type' => 'youtube',
             'title' => $title,
             'author' => $author,
-            'embed_url' => 'https://www.youtube-nocookie.com/embed/'.$videoId.'?autoplay=1&rel=0&controls=0&enablejsapi=1&origin='.urlencode(config('app.url')).'&modestbranding=1',
+            'embed_url' => 'https://www.youtube-nocookie.com/embed/'.$videoId.'?autoplay=1&rel=0&enablejsapi=1&origin='.urlencode($origin).'&modestbranding=1',
             'audio_url' => null,
             'reactive' => false,
             'warning' => null,

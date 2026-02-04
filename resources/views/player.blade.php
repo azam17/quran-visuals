@@ -682,64 +682,6 @@
             100% { opacity: 0; }
         }
 
-        /* ── Curated reciters grid ──────────────────────────────────────── */
-        .reciters-panel {
-            position: absolute;
-            inset: 0;
-            z-index: 20;
-            display: grid;
-            place-items: center;
-            padding: 24px;
-        }
-
-        .reciters-panel[hidden] {
-            display: none;
-        }
-
-        .reciters-inner {
-            text-align: center;
-            max-width: 600px;
-        }
-
-        .reciters-inner h2 {
-            font-family: "Cinzel", serif;
-            font-size: 1.2rem;
-            letter-spacing: 0.05em;
-            margin-bottom: 6px;
-        }
-
-        .reciters-inner p {
-            font-family: "Inter", sans-serif;
-            font-size: 0.85rem;
-            color: var(--muted);
-            margin-bottom: 20px;
-        }
-
-        .reciters-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 10px;
-        }
-
-        .reciter-card {
-            padding: 14px 12px;
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            background: rgba(8, 9, 12, 0.5);
-            color: var(--text);
-            font-family: "Cinzel", serif;
-            font-size: 0.82rem;
-            letter-spacing: 0.03em;
-            cursor: pointer;
-            transition: border-color 0.2s, background 0.2s, transform 0.15s;
-        }
-
-        .reciter-card:hover {
-            border-color: var(--accent);
-            background: rgba(90, 143, 168, 0.08);
-            transform: translateY(-2px);
-        }
-
         /* ── Footer shortcuts hint ──────────────────────────────────────── */
         .shortcuts-hint {
             position: fixed;
@@ -767,9 +709,6 @@
                 min-width: unset;
             }
 
-            .reciters-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
         }
     </style>
 </head>
@@ -823,13 +762,6 @@
             </div>
             <div class="message" id="message">
                 Paste a Quran YouTube link or a direct audio file to begin.
-            </div>
-            <div class="reciters-panel" id="reciters-panel">
-                <div class="reciters-inner">
-                    <h2>Discover Reciters</h2>
-                    <p>Select a reciter to start listening instantly</p>
-                    <div class="reciters-grid" id="reciters-grid"></div>
-                </div>
             </div>
             <div class="meta" id="meta" hidden>
                 <div><strong id="meta-title">Ready</strong></div>
@@ -912,8 +844,6 @@
         const shortcutsOverlay = document.getElementById('shortcuts-overlay');
         const shortcutsHint = document.getElementById('shortcuts-hint');
         const surahDisplay = document.getElementById('surah-display');
-        const recitersPanel = document.getElementById('reciters-panel');
-        const recitersGrid = document.getElementById('reciters-grid');
 
         // ── Toast utility ─────────────────────────────────────────────────
         let toastTimer = null;
@@ -1084,28 +1014,6 @@
 
         shortcutsOverlay.addEventListener('click', (e) => {
             if (e.target === shortcutsOverlay) shortcutsOverlay.classList.remove('open');
-        });
-
-        // ── Curated Reciters ──────────────────────────────────────────────
-        const curatedReciters = [
-            { name: 'Mishary Rashid Alafasy', videoId: 'tAM7I4RIxo4' },
-            { name: 'Abdul Rahman Al-Sudais', videoId: '6DuFgmxuWzg' },
-            { name: 'Maher Al Muaiqly', videoId: 'JFKhsCPdAN4' },
-            { name: 'Yasser Al Dosari', videoId: 'xHMsS_B3FAo' },
-            { name: 'Hazza Al Balushi', videoId: 'i0MsVNwj1-k' },
-            { name: 'Raad Al Kurdi', videoId: 'HT08GpOj1Ik' },
-        ];
-
-        curatedReciters.forEach(reciter => {
-            const card = document.createElement('button');
-            card.className = 'reciter-card';
-            card.textContent = reciter.name;
-            card.addEventListener('click', () => {
-                const url = `https://www.youtube.com/watch?v=${reciter.videoId}`;
-                input.value = url;
-                form.dispatchEvent(new Event('submit', { cancelable: true }));
-            });
-            recitersGrid.appendChild(card);
         });
 
         function syncPlayPauseIcon(playing) {
@@ -2054,6 +1962,9 @@
             const url = input.value.trim();
             if (!url) return;
 
+            // Enter fullscreen immediately while user gesture is still valid
+            enterCinema();
+
             setMessage('Checking recitation source...', false);
             meta.hidden = true;
 
@@ -2086,11 +1997,11 @@
                 const data = await response.json();
                 if (!data.ok) {
                     setMessage(data.reason || 'Blocked: not recognized as Quran recitation.', true);
+                    exitCinema();
                     return;
                 }
 
                 message.hidden = true;
-                recitersPanel.hidden = true;
                 setMeta(data.title || 'Quran Recitation', data.author || 'Verified input');
 
                 mediaActive = true;
@@ -2120,10 +2031,9 @@
                     showSurahName(data.title || url.split('/').pop());
                 }
 
-                // Try to enter cinema mode; may fail if user gesture expired
-                enterCinema();
             } catch (error) {
                 setMessage('Could not validate the URL. Try again.', true);
+                exitCinema();
             }
         });
 
