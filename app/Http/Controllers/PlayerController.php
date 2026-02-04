@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\QuranApiService;
 use App\Services\QuranUrlInspector;
+use App\Services\YouTubeCaptionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -49,6 +50,21 @@ class PlayerController extends Controller
                     if (file_exists($alignedPath)) {
                         $result['subtitle_slug'] = $videoId . '.aligned';
                         $result['subtitle_source'] = 'whisper_aligned';
+                    }
+                }
+
+                // No aligned file — try on-the-fly YouTube caption alignment
+                $surahNumber = $result['surah_number'] ?? null;
+                if (!isset($result['subtitle_slug']) && $videoId && $surahNumber) {
+                    try {
+                        $captionService = app(YouTubeCaptionService::class);
+                        $slug = $captionService->fetchAndAlign($videoId, $surahNumber);
+                        if ($slug) {
+                            $result['subtitle_slug'] = $slug;
+                            $result['subtitle_source'] = 'whisper_aligned';
+                        }
+                    } catch (\Throwable $e) {
+                        // Caption fetch failed — fall through to QUL timing
                     }
                 }
             }
